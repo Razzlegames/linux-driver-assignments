@@ -1,0 +1,14 @@
+binutils-2.22-6ubuntu1
+dpkg-1.16.1.2ubuntu7.1
+dpkg-dev-1.16.1.2ubuntu7.1
+gcc-4:4.6.3-1ubuntu5
+gcc-4.6-4.6.3-1ubuntu5
+gcc-4.6-base-4.6.3-1ubuntu5
+libc6-2.15-0ubuntu10.3
+libc6-dev-2.15-0ubuntu10.3
+make-3.81-8.1ubuntu1.1
+perl-5.14.2-6ubuntu2.2
+this was built on a machine with the kernel:
+Linux kyle-VirtualBox 3.2.35 #2 SMP Sat Feb 9 12:47:52 MST 2013 x86_64 x86_64 x86_64 GNU/Linux
+using the compiler:
+gcc version 4.6.3 (Ubuntu/Linaro 4.6.3-1ubuntu5) 
