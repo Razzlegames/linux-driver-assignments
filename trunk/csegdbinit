@@ -1,0 +1,45 @@
+define lsmod
+        printf "Address\t\t.text\t\tModule\n"
+        set $m=(struct list_head *)&modules
+        set $done=0
+        set $count=$arg0
+        while ( $count && !$done )
+                # list_head is 8-bytes into struct module
+                set $mp=(struct module *)((char *)$m->next - (char *)8)
+                printf "0x%16X\t0x%16x\t%s\n", $mp, $mp->module_core, $mp->name
+                if ( $mp->list->next == &modules)
+                        set $done=1
+                end
+                set $m=$m->next
+                set $count = $count - 1
+        end
+        if (!$count)
+                add-symbol-file ./drivers/char/cse536/cse5361.ko $mp->module_core
+        end
+end
+ 
+document lsmod
+List the first n loaded kernel modules and their start addresses and load the
+symbol table for the nth module
+end
+ 
+define cse536
+#       file vmlinux
+        target remote /dev/pts/11
+        lsmod $arg0
+        b cse536_open
+        c
+end
+ 
+define socatDebug
+#       file vmlinux
+        target remote /dev/pts/$arg1
+        lsmod $arg0
+        b cse536_open
+        c
+end
+  
+document cse536
+load the symbol table at .text address of the nth module and set break at
+cse536_open
+end
