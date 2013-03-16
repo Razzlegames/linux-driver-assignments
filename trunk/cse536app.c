@@ -27,7 +27,9 @@ int main()
       printf("No data read\n");
   else
       printf("%s\n", buffer);
-  fwrite(buffer, 1, 10, fd);
+  count = fwrite(buffer, 1, 10, fd);
+  printf("writen: %zd\n", count);
+  fflush(fd);
   fclose(fd);
 
   return EXIT_SUCCESS;
