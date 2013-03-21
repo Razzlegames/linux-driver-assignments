@@ -2,7 +2,7 @@
 
 TARGET=cse536app
 
-all: $(TARGET)
+all: $(TARGET) mod
 
 $(TARGET): $(TARGET).c
 	gcc -g -ggdb $< -o $(TARGET)
