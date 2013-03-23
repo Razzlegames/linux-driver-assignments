@@ -157,13 +157,13 @@ static void send(size_t data_size, const char* buffer,
     const char* DADDR_STRING)
 {
 
-  DEBUG("Sending data: buffer[%zd] "
-      "to: %s, from: %s\n", data_size, DADDR_STRING,
-      SADDR_STRING);
-
   const int LENGTH = 1500 + sizeof(struct iphdr);
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
   struct iphdr* ip_header = NULL;
+
+  DEBUG("Sending data: buffer[%zd] "
+      "to: %s, from: %s\n", data_size, DADDR_STRING,
+      SADDR_STRING);
 
   if(skb == NULL)
   {
