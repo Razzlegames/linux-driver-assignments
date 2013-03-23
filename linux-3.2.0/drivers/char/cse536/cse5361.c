@@ -106,10 +106,12 @@ static int __init cse536_init(void)
   //		return -EAGAIN;
   //	}
 
-	if (inet_add_protocol(&cse536_protocol, IPPROTO_CSE536) < 0) 
+	ret = inet_add_protocol(&cse536_protocol, IPPROTO_CSE536);
+  if(ret < 0)
   {
 		ERROR("Could not register cse536_protocol!");
-		return -EAGAIN;
+    inet_del_protocol(&cse536_protocol, IPPROTO_CSE536);
+		return ret;
 	}
 
   printk("cse536: registered module successfully!\n");

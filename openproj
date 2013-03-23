@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export "CODE_TAGS=./kernel_tags"; \
+export "CODE_TAGS=kernel_tags"; \
 		vim  linux-3.2.0/drivers/char/cse536/*.c \
 			./*.c \
 			Makefile
