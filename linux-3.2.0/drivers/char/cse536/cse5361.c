@@ -76,7 +76,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
-  printk("cse536_write: accepting %d bytes\n", count);
+  printk("cse536_write: accepting %zd bytes\n", count);
   return 0;
 }
 
@@ -123,6 +123,11 @@ static int __init cse536_init(void)
 //************************************************************************
 static void __exit cse536_exit(void)
 {
+  int ret = inet_del_protocol(&cse536_protocol, IPPROTO_CSE536);
+  if(ret < 0)
+  {
+    ERROR("Could not unregister protocol!\n");
+  }
   unregister_chrdev(CSE536_MAJOR, "cse5361"); 
   printk("cse536 module Exit\n");
 }

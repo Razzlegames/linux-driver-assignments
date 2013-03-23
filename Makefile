@@ -19,6 +19,7 @@ mod:
 	make -C linux-3.2.0/ M=drivers/char/cse536 modules
 
 install: $(TARGET) mod tags
+	-sudo mknod /dev/cse5361 c 234 0
 	-sudo rmmod cse5361
 	make -C linux-3.2.0/ M=drivers/char/cse536 modules
 	sudo insmod \
