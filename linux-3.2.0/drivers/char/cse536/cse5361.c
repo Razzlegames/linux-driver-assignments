@@ -75,7 +75,8 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
 static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
-  printk("cse536_write: accepting zero bytes\n");
+
+  printk("cse536_write: accepting %d bytes\n", count);
   return 0;
 }
 
