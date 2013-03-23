@@ -1,6 +1,7 @@
 .PHONY: mod run clean all
 
 TARGET=cse536app
+DEVICE= /dev/cse5361
 
 all: $(TARGET) mod
 
@@ -19,7 +20,9 @@ mod:
 	make -C linux-3.2.0/ M=drivers/char/cse536 modules
 
 install: $(TARGET) mod tags
-	-sudo mknod /dev/cse5361 c 234 0
+	-sudo mknod $(DEVICE) c 234 0
+	sudo chown kyle.kyle $(DEVICE)
+	sudo chmod o=+rw,g=+rw $(DEVICE)
 	-sudo rmmod cse5361
 	make -C linux-3.2.0/ M=drivers/char/cse536 modules
 	sudo insmod \

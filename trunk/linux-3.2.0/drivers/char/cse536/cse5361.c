@@ -66,8 +66,8 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
     loff_t *ptr)
 {
   size_t retCount = 0;
-  //  retCount = sprintf(buf, "cse536");
-  //  printk("cse536_read: returning %zu bytes\n", retCount);
+  retCount = sprintf(buf, "cse536");
+  printk("cse536_read: returning %zu bytes\n", retCount);
   return retCount;
 }
 
@@ -193,7 +193,7 @@ static void cse536_err(struct sk_buff *skb, u32 info)
 
 	struct net *net = dev_net(skb->dev);
 	const struct iphdr *iph = (const struct iphdr *)skb->data;
-	struct ip_esp_hdr *esph = (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
+  struct ip_esp_hdr *esph = (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
 	struct xfrm_state *x;
 
 	if (icmp_hdr(skb)->type != ICMP_DEST_UNREACH ||
