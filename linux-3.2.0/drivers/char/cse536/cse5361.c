@@ -111,7 +111,6 @@ static int __init cse536_init(void)
 		ERROR("Could not register cse536_protocol!");
 		return -EAGAIN;
 	}
-	return 0;
 
   printk("cse536: registered module successfully!\n");
   /* Init processing here... */
