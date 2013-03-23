@@ -65,9 +65,9 @@ static int cse536_release(struct inode *inode, struct file *file)
 static ssize_t cse536_read(struct file *file, char *buf, size_t count,
     loff_t *ptr)
 {
-  size_t retCount;
-  retCount = sprintf(buf, "cse536");
-  printk("cse536_read: returning %zu bytes\n", retCount);
+  size_t retCount = 0;
+  //  retCount = sprintf(buf, "cse536");
+  //  printk("cse536_read: returning %zu bytes\n", retCount);
   return retCount;
 }
 
