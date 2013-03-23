@@ -29,12 +29,17 @@
 #define ERROR(s, ...) \
   printk(KERN_ERR "%s:%d ERROR: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
 
+#define DEBUG(s, ...) \
+  printk(KERN_DEBUG "%s:%d DEBUG: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
+
+
 static int debug_enable = 0;
 module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
 struct file_operations cse536_fops;
 
-static void send(unsigned int data_size, const char* SADDR_STRING,
+static void send(size_t data_size, const char* buffer,
+    const char* SADDR_STRING,
     const char* DADDR_STRING);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
@@ -77,7 +82,8 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 {
 
   printk("cse536_write: accepting %zd bytes\n", count);
-  return 0;
+  send(count, buf, "192.168.2.200", "192.168.2.1");
+  return count;
 }
 
 //************************************************************************
@@ -146,9 +152,14 @@ owner: THIS_MODULE,
 /**
  *  Send out a raw packet using the IP layer
  */
-static void send(unsigned int data_size, const char* SADDR_STRING,
+static void send(size_t data_size, const char* buffer,
+    const char* SADDR_STRING,
     const char* DADDR_STRING)
 {
+
+  DEBUG("Sending data: buffer[%zd] "
+      "to: %s, from: %s\n", data_size, DADDR_STRING,
+      SADDR_STRING);
 
   const int LENGTH = 1500 + sizeof(struct iphdr);
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
@@ -160,13 +171,26 @@ static void send(unsigned int data_size, const char* SADDR_STRING,
     ERROR("Could not allocate sk_buff!\n");
     return;
   }
+  skb_reserve(skb, sizeof(*ip_header));
 
   skb_put(skb, LENGTH);
 
+  // Save off all the payload data
+  DEBUG("Saving payload data\n");
+  skb_push(skb, data_size);
   skb_reset_transport_header(skb);
+  unsigned char* transport_data = skb_transport_header(skb);
+  memcpy(transport_data, buffer, data_size);
+  DEBUG("Done saving payload data\n");
 
+  // Create space in sk_buff for iphdr
+  DEBUG("Creating space in sk_buff for iphdr");
   skb_push(skb, sizeof(*ip_header));
   skb_reset_network_header(skb);
+  DEBUG("Done Creating space in sk_buff for iphdr");
+
+  // Populate IP header
+  DEBUG("Creating ip_header\n");
   ip_header = ip_hdr(skb);
 
   ip_header->version = 4;
@@ -182,7 +206,10 @@ static void send(unsigned int data_size, const char* SADDR_STRING,
 
   ip_header->saddr = in_aton(SADDR_STRING);
   ip_header->daddr = in_aton(DADDR_STRING);
+  DEBUG("Done Creating ip_header\n");
 
+
+  DEBUG("Sending IP Packet!\n");
   ip_local_out(skb);
 
 }
