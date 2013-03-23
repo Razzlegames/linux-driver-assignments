@@ -160,6 +160,7 @@ static void send(size_t data_size, const char* buffer,
   const int LENGTH = 1500 + sizeof(struct iphdr);
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
   struct iphdr* ip_header = NULL;
+  unsigned char* transport_data = NULL;
 
   DEBUG("Sending data: buffer[%zd] "
       "to: %s, from: %s\n", data_size, DADDR_STRING,
@@ -173,13 +174,12 @@ static void send(size_t data_size, const char* buffer,
   }
   skb_reserve(skb, sizeof(*ip_header));
 
-  skb_put(skb, LENGTH);
 
   // Save off all the payload data
   DEBUG("Saving payload data\n");
-  skb_push(skb, data_size);
+  skb_put(skb, data_size);
   skb_reset_transport_header(skb);
-  unsigned char* transport_data = skb_transport_header(skb);
+  transport_data = skb_transport_header(skb);
   memcpy(transport_data, buffer, data_size);
   DEBUG("Done saving payload data\n");
 
