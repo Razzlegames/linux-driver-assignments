@@ -161,6 +161,7 @@ static void send(size_t data_size, const char* buffer,
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
+  int err = 0;
 
   DEBUG("Sending data: buffer[%zd] "
       "to: %s, from: %s\n", data_size, DADDR_STRING,
@@ -172,15 +173,21 @@ static void send(size_t data_size, const char* buffer,
     ERROR("Could not allocate sk_buff!\n");
     return;
   }
-  skb_reserve(skb, sizeof(*ip_header));
-
+  skb_reserve(skb, sizeof(*ip_header)+
+      sizeof(struct udphdr));
 
   // Save off all the payload data
   DEBUG("Saving payload data\n");
-  skb_put(skb, data_size);
-  skb_reset_transport_header(skb);
-  transport_data = skb_transport_header(skb);
-  memcpy(transport_data, buffer, data_size);
+  transport_data = skb_put(skb, data_size);
+  //skb_reset_transport_header(skb);
+  //transport_data = skb_transport_header(skb);
+  //memcpy(transport_data, buffer, data_size);
+  skb->csum = csum_and_copy_from_user(buffer, 
+      transport_data, data_size, 0, &err);
+  if(err)
+  {
+    ERROR("Could not load payload data!\n");
+  }
   DEBUG("Done saving payload data\n");
 
   // Create space in sk_buff for iphdr
@@ -201,11 +208,13 @@ static void send(size_t data_size, const char* buffer,
   ip_header->frag_off = 0;
   ip_header->ttl = 64;
   ip_header->protocol = IPPROTO_CSE536;
-  ip_header->check = ip_fast_csum((unsigned char*)ip_header,
-      ip_header->ihl);
+  ip_header->check = 0;
 
   ip_header->saddr = in_aton(SADDR_STRING);
   ip_header->daddr = in_aton(DADDR_STRING);
+  ip_header->check = ip_fast_csum((unsigned char*)ip_header,
+      ip_header->ihl);
+
   DEBUG("Done Creating ip_header\n");
 
 
