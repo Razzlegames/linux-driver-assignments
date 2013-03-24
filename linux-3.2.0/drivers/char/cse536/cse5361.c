@@ -139,14 +139,30 @@ static void __exit cse536_exit(void)
 }
 
 //************************************************************************
-struct file_operations cse536_fops = {
-owner: THIS_MODULE,
-       read: cse536_read,
-       write: cse536_write,
-       unlocked_ioctl: cse536_ioctl,
-       open: cse536_open,
-       release: cse536_release,
-};
+/**
+ *  Get the mac address for a ipv4 addr
+ */
+void getMacAddresses(__be32 saddr,__be32 daddr, 
+    struct sk_buff* skb)
+{
+
+  struct rtable* rt = NULL;
+  struct net* net = &init_net;
+  struct ethhdr* eth = NULL;
+
+  DEBUG("getting MAC addresses from routing table\n");
+  rt = ip_route_output(net, daddr, saddr, 0, 0);
+  skb_dst_set(skb, &rt->dst);
+  eth = eth_hdr(skb);
+  DEBUG("Destination MAC:%02x:%02x:%02x:%02x:%02x:%02x\n",
+      eth->h_dest[0],
+      eth->h_dest[1],
+      eth->h_dest[2],
+      eth->h_dest[3],
+      eth->h_dest[4],
+      eth->h_dest[5]);
+
+}
 
 //************************************************************************
 /**
@@ -162,6 +178,11 @@ static void send(size_t data_size, const char* buffer,
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
   int err = 0;
+  struct ethhdr* eth = NULL;
+
+  __be32 saddr = in_aton(SADDR_STRING);
+  __be32 daddr= in_aton(DADDR_STRING);
+
 
   DEBUG("Sending data: buffer[%zd] "
       "to: %s, from: %s\n", data_size, DADDR_STRING,
@@ -190,11 +211,12 @@ static void send(size_t data_size, const char* buffer,
   }
   DEBUG("Done saving payload data\n");
 
-  // Create space in sk_buff for iphdr
-  DEBUG("Creating space in sk_buff for iphdr");
-  skb_push(skb, sizeof(*ip_header));
-  skb_reset_network_header(skb);
-  DEBUG("Done Creating space in sk_buff for iphdr");
+
+  //  // Create space in sk_buff for iphdr
+  //  DEBUG("Creating space in sk_buff for iphdr\n");
+  //  skb_push(skb, sizeof(*ip_header));
+  //  skb_reset_network_header(skb);
+  //  DEBUG("Done Creating space in sk_buff for iphdr\n");
 
   // Populate IP header
   DEBUG("Creating ip_header\n");
@@ -214,12 +236,20 @@ static void send(size_t data_size, const char* buffer,
   ip_header->daddr = in_aton(DADDR_STRING);
   ip_header->check = ip_fast_csum((unsigned char*)ip_header,
       ip_header->ihl);
-
   DEBUG("Done Creating ip_header\n");
 
+  DEBUG("Creating mac header...\n");
 
-  DEBUG("Sending IP Packet!\n");
-  ip_local_out(skb);
+  eth = (struct ethhdr*) skb_push(skb, ETH_HLEN);
+  //skb_reset_mac_header(skb);
+  //skb->protocol = eth->h_proto = htons(ETH_P_IP);
+  //memcpy(eth->h_source, init_net.dev_addr, ETH_ALEN);
+  getMacAddresses(saddr, daddr, skb);
+  DEBUG("Done Creating mac header...\n");
+
+  //  DEBUG("Sending IP Packet!\n");
+  //  ip_local_out(skb);
+  //  DEBUG("Done Sending IP Packet!\n");
 
 }
 
@@ -227,23 +257,33 @@ static void send(size_t data_size, const char* buffer,
 static void cse536_err(struct sk_buff *skb, u32 info)
 {
 
-	struct net *net = dev_net(skb->dev);
-	const struct iphdr *iph = (const struct iphdr *)skb->data;
+  struct net *net = dev_net(skb->dev);
+  const struct iphdr *iph = (const struct iphdr *)skb->data;
   struct ip_esp_hdr *esph = (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
-	struct xfrm_state *x;
+  struct xfrm_state *x;
 
-	if (icmp_hdr(skb)->type != ICMP_DEST_UNREACH ||
-	    icmp_hdr(skb)->code != ICMP_FRAG_NEEDED)
-		return;
+  if (icmp_hdr(skb)->type != ICMP_DEST_UNREACH ||
+      icmp_hdr(skb)->code != ICMP_FRAG_NEEDED)
+      return;
 
-	x = xfrm_state_lookup(net, skb->mark, (const xfrm_address_t *)&iph->daddr,
-			      esph->spi, IPPROTO_ESP, AF_INET);
-	if (!x)
-		return;
-	NETDEBUG(KERN_DEBUG "pmtu discovery on SA ESP/%08x/%08x\n",
-		 ntohl(esph->spi), ntohl(iph->daddr));
-	xfrm_state_put(x);
+  x = xfrm_state_lookup(net, skb->mark, (const xfrm_address_t *)&iph->daddr,
+      esph->spi, IPPROTO_ESP, AF_INET);
+  if (!x)
+      return;
+  NETDEBUG(KERN_DEBUG "pmtu discovery on SA ESP/%08x/%08x\n",
+      ntohl(esph->spi), ntohl(iph->daddr));
+  xfrm_state_put(x);
 }
+
+//************************************************************************
+struct file_operations cse536_fops = {
+owner: THIS_MODULE,
+       read: cse536_read,
+       write: cse536_write,
+       unlocked_ioctl: cse536_ioctl,
+       open: cse536_open,
+       release: cse536_release,
+};
 
 module_init(cse536_init);
 module_exit(cse536_exit);

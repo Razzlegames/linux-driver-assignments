@@ -1,7 +1,12 @@
-.PHONY: mod run clean all
+.PHONY: mod run clean all 
 
 TARGET=cse536app
 DEVICE= /dev/cse5361
+
+MY_PATH= linux-3.2.0/drivers/char/cse536/
+
+MY_LOCAL_SRC_FILES := \
+	$(wildcard $(MY_PATH)/*.c)
 
 all: $(TARGET) mod
 
@@ -11,7 +16,6 @@ $(TARGET): $(TARGET).c tags
 
 clean:
 	rm $(TARGET)
-
 
 run: $(TARGET) tags
 	./$(TARGET)
@@ -31,5 +35,5 @@ install: $(TARGET) mod tags
 kernel_tags:
 	ctags -f kernel_tags -Rn ./
 
-tags:
-	ctags -Rn linux-3.2.0/drivers/char/cse536/ ./*.c
+tags: $(MY_LOCAL_SRC_FILES)
+	ctags -Rn $(MY_PATH) ./*.c
