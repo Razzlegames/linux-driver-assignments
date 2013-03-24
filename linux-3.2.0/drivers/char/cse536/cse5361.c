@@ -148,19 +148,19 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
 
   struct rtable* rt = NULL;
   struct net* net = &init_net;
-  struct ethhdr* eth = NULL;
+  //struct ethhdr* eth = NULL;
 
   DEBUG("getting MAC addresses from routing table\n");
   rt = ip_route_output(net, daddr, saddr, 0, 0);
   skb_dst_set(skb, &rt->dst);
-  eth = eth_hdr(skb);
-  DEBUG("Destination MAC:%02x:%02x:%02x:%02x:%02x:%02x\n",
-      eth->h_dest[0],
-      eth->h_dest[1],
-      eth->h_dest[2],
-      eth->h_dest[3],
-      eth->h_dest[4],
-      eth->h_dest[5]);
+  //  eth = eth_hdr(skb);
+  //  DEBUG("Destination MAC:%02x:%02x:%02x:%02x:%02x:%02x\n",
+  //      eth->h_dest[0],
+  //      eth->h_dest[1],
+  //      eth->h_dest[2],
+  //      eth->h_dest[3],
+  //      eth->h_dest[4],
+  //      eth->h_dest[5]);
 
 }
 
@@ -240,16 +240,16 @@ static void send(size_t data_size, const char* buffer,
 
   DEBUG("Creating mac header...\n");
 
-  eth = (struct ethhdr*) skb_push(skb, ETH_HLEN);
+  //eth = (struct ethhdr*) skb_push(skb, ETH_HLEN);
   //skb_reset_mac_header(skb);
   //skb->protocol = eth->h_proto = htons(ETH_P_IP);
   //memcpy(eth->h_source, init_net.dev_addr, ETH_ALEN);
   getMacAddresses(saddr, daddr, skb);
   DEBUG("Done Creating mac header...\n");
 
-  //  DEBUG("Sending IP Packet!\n");
-  //  ip_local_out(skb);
-  //  DEBUG("Done Sending IP Packet!\n");
+  DEBUG("Sending IP Packet!\n");
+  ip_local_out(skb);
+  DEBUG("Done Sending IP Packet!\n");
 
 }
 
