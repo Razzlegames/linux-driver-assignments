@@ -24,11 +24,11 @@ int main()
         strerror(errno));
     exit(1);
   }
-  count = fread(buffer, 1, sizeof(buffer), fd);
-  if (!count)
-      printf("No data read\n");
-  else
-      printf("%s\n", buffer);
+  //  count = fread(buffer, 1, sizeof(buffer), fd);
+  //  if (!count)
+  //      printf("No data read\n");
+  //  else
+  //      printf("%s\n", buffer);
 
   char testbuff[] = "testing";
   count = fwrite(testbuff, 1, sizeof(testbuff), fd);
