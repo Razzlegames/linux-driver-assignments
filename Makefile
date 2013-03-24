@@ -11,7 +11,7 @@ MY_LOCAL_SRC_FILES := \
 all: $(TARGET) mod
 
 $(TARGET): $(TARGET).c tags
-	gcc -g -ggdb $< -o $(TARGET)
+	g++ -Wall -g -ggdb $< -o $(TARGET)
 
 
 clean:

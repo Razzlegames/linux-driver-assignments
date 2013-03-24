@@ -38,19 +38,43 @@ module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
 struct file_operations cse536_fops;
 
-static void send(size_t data_size, const char* buffer,
-    const char* SADDR_STRING,
-    const char* DADDR_STRING);
+//static void sendPacket(size_t data_size, const char* buffer,
+//    const char* SADDR_STRING,
+//    const char* DADDR_STRING);
+
+static void sendPacketU32(size_t data_size, const char* buffer,
+    __be32 saddr, __be32 daddr);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
+int cse536_receive(struct sk_buff* skb);
 
 //************************************************************************
 static const struct net_protocol cse536_protocol = {
-	.handler	=	xfrm4_rcv,
+	.handler	=	cse536_receive,
 	.err_handler	=	cse536_err,
 	.no_policy	=	1,
 	.netns_ok	=	1,
 };
+
+//************************************************************************
+/**
+ *  Receive packets on the new protocol
+ */
+int cse536_receive(struct sk_buff* skb)
+{
+
+  if(skb == NULL)
+  {
+    ERROR("packet received was NULL!\n");
+    return -1;
+  }
+
+  DEBUG("Received a packet! skb->data[%d]\n",
+      skb->data_len);
+  
+  return 0;
+}
+
 
 //************************************************************************
 static int cse536_open(struct inode *inode, struct file *file)
@@ -70,6 +94,7 @@ static int cse536_release(struct inode *inode, struct file *file)
 static ssize_t cse536_read(struct file *file, char *buf, size_t count,
     loff_t *ptr)
 {
+
   size_t retCount = 0;
   retCount = sprintf(buf, "cse536");
   printk("cse536_read: returning %zu bytes\n", retCount);
@@ -81,8 +106,29 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
-  printk("cse536_write: accepting %zd bytes\n", count);
-  send(count, buf, "192.168.2.8", "192.168.2.1");
+  const char* SADDR_STRING = "192.168.2.8";
+  __be32* daddr_ptr = NULL;
+  const char* data_buf = NULL;
+  __be32 daddr = 0;
+  __be32 saddr = 0;
+
+  if(buf == NULL)
+  {
+
+    ERROR("buffer to send was null!!\n");
+    return 0;
+  }
+
+  DEBUG("cse536_write: accepting %zd bytes\n", count);
+  daddr_ptr = (__be32*)buf;
+  data_buf = (char*)(&daddr_ptr[1]);
+  daddr = *daddr_ptr;
+  saddr = in_aton(SADDR_STRING);
+
+  DEBUG("source addr: 0x%04x\n", saddr);
+  DEBUG("destination addr: 0x%04x\n", daddr);
+
+  sendPacketU32(count, data_buf, saddr, daddr);
   return count;
 }
 
@@ -153,7 +199,7 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
   DEBUG("getting MAC addresses from routing table\n");
   rt = ip_route_output(net, daddr, saddr, 0, 0);
   skb_dst_set(skb, &rt->dst);
-  DEBUG("Destination found: 0x%08x\n", 
+  DEBUG("Destination found: 0x%08lx\n", 
       (unsigned long)&rt->dst);
 
   //  eth = eth_hdr(skb);
@@ -169,27 +215,27 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
 
 //************************************************************************
 /**
- *  Send out a raw packet using the IP layer
+ *  Send out a raw packet using the IP layer.
+ *
+ *  @param data_size size of @p buffer
+ *  @param buffer data to send 
+ *  @param saddr ip source address
+ *  @param daddr ip dest address
  */
-static void send(size_t data_size, const char* buffer,
-    const char* SADDR_STRING,
-    const char* DADDR_STRING)
+static void sendPacketU32(size_t data_size, const char* buffer,
+    __be32 saddr, __be32 daddr)
 {
 
-  const int LENGTH = 1500 + sizeof(struct iphdr);
+  const int LENGTH = 1500 + sizeof(struct iphdr) + data_size;
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
   int err = 0;
   //struct ethhdr* eth = NULL;
 
-  __be32 saddr = in_aton(SADDR_STRING);
-  __be32 daddr= in_aton(DADDR_STRING);
-
-
   DEBUG("Sending data: buffer[%zd] "
-      "to: %s, from: %s\n", data_size, DADDR_STRING,
-      SADDR_STRING);
+      "to: %04x, from: %04x\n", data_size, daddr,
+      saddr);
 
   if(skb == NULL)
   {
@@ -235,8 +281,8 @@ static void send(size_t data_size, const char* buffer,
   ip_header->protocol = IPPROTO_CSE536;
   ip_header->check = 0;
 
-  ip_header->saddr = in_aton(SADDR_STRING);
-  ip_header->daddr = in_aton(DADDR_STRING);
+  ip_header->saddr = saddr;
+  ip_header->daddr = daddr;
   ip_header->check = ip_fast_csum((unsigned char*)ip_header,
       ip_header->ihl);
   DEBUG("Done Creating ip_header\n");
@@ -255,6 +301,26 @@ static void send(size_t data_size, const char* buffer,
   DEBUG("Done Sending IP Packet!\n");
 
 }
+
+
+////************************************************************************
+///**
+// *  Send out a raw packet using the IP layer.
+// *
+// *  @param data_size size of @p buffer
+// *  @param buffer data to send 
+// *  @param SADDR_STRING ip source address
+// *  @param DADDR_STRING ip source address
+// */
+//static void sendPacket(size_t data_size, const char* buffer,
+//    const char* SADDR_STRING,
+//    const char* DADDR_STRING)
+//{
+//
+//  __be32 saddr = in_aton(SADDR_STRING);
+//  __be32 daddr= in_aton(DADDR_STRING);
+//  sendPacketU32(data_size, buffer, saddr, daddr);
+//}
 
 //***************************************************************
 static void cse536_err(struct sk_buff *skb, u32 info)
