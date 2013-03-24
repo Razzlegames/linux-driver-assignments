@@ -178,7 +178,7 @@ static void send(size_t data_size, const char* buffer,
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
   int err = 0;
-  struct ethhdr* eth = NULL;
+  //struct ethhdr* eth = NULL;
 
   __be32 saddr = in_aton(SADDR_STRING);
   __be32 daddr= in_aton(DADDR_STRING);
@@ -197,19 +197,19 @@ static void send(size_t data_size, const char* buffer,
   skb_reserve(skb, sizeof(*ip_header)+
       sizeof(struct udphdr));
 
-  // Save off all the payload data
-  DEBUG("Saving payload data\n");
-  transport_data = skb_put(skb, data_size);
-  //skb_reset_transport_header(skb);
-  //transport_data = skb_transport_header(skb);
-  //memcpy(transport_data, buffer, data_size);
-  skb->csum = csum_and_copy_from_user(buffer, 
-      transport_data, data_size, 0, &err);
-  if(err)
-  {
-    ERROR("Could not load payload data!\n");
-  }
-  DEBUG("Done saving payload data\n");
+  //  // Save off all the payload data
+  //  DEBUG("Saving payload data\n");
+  //  transport_data = skb_put(skb, data_size);
+  //  //skb_reset_transport_header(skb);
+  //  //transport_data = skb_transport_header(skb);
+  //  //memcpy(transport_data, buffer, data_size);
+  //  //  skb->csum = csum_and_copy_from_user(buffer, 
+  //  //      transport_data, data_size, 0, &err);
+  //  if(err)
+  //  {
+  //    ERROR("Could not load payload data!\n");
+  //  }
+  //  DEBUG("Done saving payload data\n");
 
 
   //  // Create space in sk_buff for iphdr
