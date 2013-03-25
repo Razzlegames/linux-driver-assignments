@@ -21,6 +21,8 @@
 #include <linux/in.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>
+#include <linux/netdevice.h>
+#include <linux/inetdevice.h>
 
 /// Attempt to use an unreserved IP protocol number
 #define IPPROTO_CSE536  253
@@ -47,6 +49,7 @@ static void sendPacketU32(size_t data_size, const char* buffer,
 
 static void cse536_err(struct sk_buff *skb, u32 info);
 int cse536_receive(struct sk_buff* skb);
+static __be32 getSourceAddr(void);
 
 //************************************************************************
 static const struct net_protocol cse536_protocol = {
@@ -102,15 +105,43 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
 }
 
 //************************************************************************
+/**
+ *  Find source address
+ */
+static __be32 getSourceAddr(void)
+{
+
+  __be32 saddr = 0;
+
+  // find the source addr
+  struct net_device* eth0 = dev_get_by_name(&init_net, "eth0");
+  struct in_device* ineth0 = in_dev_get(eth0);
+  int i = 0;
+
+  for_primary_ifa(ineth0)
+  {
+
+    if(i == 0)
+    {
+      saddr = ifa->ifa_address;
+    }
+    i++;
+  }endfor_ifa(ineth0);
+
+  return saddr;
+
+}
+
+//************************************************************************
 static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
-  const char* SADDR_STRING = "192.168.2.8";
+  //const char* SADDR_STRING = "192.168.2.8";
   __be32* daddr_ptr = NULL;
   const char* data_buf = NULL;
   __be32 daddr = 0;
-  __be32 saddr = 0;
+  __be32 saddr = getSourceAddr();
 
   if(buf == NULL)
   {
@@ -123,7 +154,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   daddr_ptr = (__be32*)buf;
   data_buf = (char*)(&daddr_ptr[1]);
   daddr = *daddr_ptr;
-  saddr = in_aton(SADDR_STRING);
+  //saddr = in_aton(SADDR_STRING);
 
   DEBUG("source addr: 0x%04x\n", saddr);
   DEBUG("destination addr: 0x%04x\n", daddr);
@@ -222,6 +253,7 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
  *  @param saddr ip source address
  *  @param daddr ip dest address
  */
+
 static void sendPacketU32(size_t data_size, const char* buffer,
     __be32 saddr, __be32 daddr)
 {
