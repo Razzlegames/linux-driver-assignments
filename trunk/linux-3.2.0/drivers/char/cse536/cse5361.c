@@ -67,6 +67,9 @@ int cse536_receive(struct sk_buff* skb)
 {
 
   unsigned char* transport_data = NULL;
+  unsigned char* cur = NULL;
+  unsigned char* end = NULL;
+  int i = 0;
 
   if(skb == NULL)
   {
@@ -75,8 +78,36 @@ int cse536_receive(struct sk_buff* skb)
   }
 
   transport_data = skb_transport_header(skb);
-  DEBUG("Received a packet! skb->data[%d]\n",
-      skb->truesize);
+  DEBUG("Received a packet! skb->data_len[%d]\n",
+      skb->data_len);
+  DEBUG("skb->end[%d]\n",
+      skb->end);
+  DEBUG("skb->len-sizeof(struct iphdr)[%d]\n",
+      skb->len-sizeof(struct iphdr));
+  DEBUG("skb->len[%d]\n",
+      skb->len);
+  DEBUG("skb->tail[%d]\n",
+      skb->tail);
+  DEBUG("skb->mac_header[%d]\n",
+      skb->mac_header);
+  DEBUG("skb->head[%p]\n",
+      (unsigned int)skb->head);
+  DEBUG("transport_data[%p]\n",
+      (unsigned int)transport_data);
+  DEBUG("data: %s\n",
+      transport_data);
+
+  DEBUG("Packet in hex: ");
+  cur = transport_data;
+  end = transport_data + skb->len;
+  while(cur < end)
+  {
+
+    printk("%02x", *cur);
+    cur++;
+  }
+  printk("\n");
+
   
   return 0;
 }
