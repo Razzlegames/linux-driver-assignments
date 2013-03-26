@@ -66,14 +66,17 @@ static const struct net_protocol cse536_protocol = {
 int cse536_receive(struct sk_buff* skb)
 {
 
+  unsigned char* transport_data = NULL;
+
   if(skb == NULL)
   {
     ERROR("packet received was NULL!\n");
     return -1;
   }
 
+  transport_data = skb_transport_header(skb);
   DEBUG("Received a packet! skb->data[%d]\n",
-      skb->data_len);
+      skb->truesize);
   
   return 0;
 }

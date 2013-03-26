@@ -111,25 +111,66 @@ int writeOutput(uint32_t dest, char* data, int data_size)
 }
 
 //***************************************************************
+/**
+ *  Wait for packets
+ */
+void waitForPackets()
+{
+  char buffer[0xFF];
+  int count = 0;
+  while(1)
+  {
+
+    printf("Progam must be stopped to exit..."
+        "Waiting for packets\n");
+
+    count = fread(buffer, sizeof(buffer), 1, fd);
+
+    if(count > 0)
+    {
+      printf("Read packet data string: %s\n", 
+          buffer);
+    }
+
+    printf("Hex Data: ");
+    int i;
+    for(i = 0; i < count; i++)
+    {
+      printf("%02x", buffer[i]);
+
+    }
+  }
+
+}
+
+//***************************************************************
 int main(int argc, char** argv)
 {
 
   processArgs(argc, argv);
 
-  fd = openDev("wb");
+  fd = openDev("rb+");
 
   uint32_t daddr = 0;
-  if(strlen(dest_ip_str) <= 0)
-  {
-    printf("no destination IP set. Use -d IP_ADDRESS_STRING. "
-        "Example ./cse536app -d 192.168.2.1\n");
-    exit(1);
-  }
 
-  inet_pton(AF_INET, dest_ip_str, &daddr);
-  writeOutput(daddr,data_to_send, data_to_send_size);
-  fflush(fd);
-  fclose(fd);
+  if(!receiver_mode)
+  {
+    if(strlen(dest_ip_str) <= 0)
+    {
+      printf("no destination IP set. Use -d IP_ADDRESS_STRING. "
+          "Example ./cse536app -d 192.168.2.1\n");
+      exit(1);
+    }
+
+    inet_pton(AF_INET, dest_ip_str, &daddr);
+    writeOutput(daddr,data_to_send, data_to_send_size);
+    fflush(fd);
+    fclose(fd);
+  }
+  else
+  {
+    waitForPackets();
+  }
 
   return EXIT_SUCCESS;
 }
