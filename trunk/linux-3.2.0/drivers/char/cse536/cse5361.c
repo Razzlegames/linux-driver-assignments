@@ -93,7 +93,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 {
 
   struct receive_list* r =  (struct receive_list*)kmalloc(
-      sizeof(struct receive_list), GFP_KERNEL);
+      sizeof(struct receive_list),GFP_ATOMIC );
 
   if(r == NULL)
   {
