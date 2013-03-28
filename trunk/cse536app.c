@@ -13,6 +13,9 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <arpa/inet.h>
+#include "linux-3.2.0/drivers/char/cse536/cse5361.h"
+
+
 
 #define MAX_IP_STR 13
 
@@ -96,9 +99,24 @@ int writeOutput(uint32_t dest, char* data, int data_size)
   printf("Writing to dest: %04x, data: %s, size: %d\n",
       dest, data, data_size);
 
-  size_t count = fwrite(&dest, 1, sizeof(dest), fd);
-  count += fwrite(data, 1, data_size-sizeof(dest), fd);
-  if(count <= 0)
+  unsigned char* buffer = (unsigned char*)malloc(data_size+sizeof(uint8_t));
+
+  size_t count = 0;
+
+  // Write the record type
+  buffer[0] = (uint8_t)IP_RECORD;
+  count += sizeof(uint8_t);
+
+  // write dest ip
+  memcpy(&buffer[count], &dest, sizeof(dest)); 
+  count += sizeof(dest);
+
+  // write dest ip
+  memcpy(&buffer[count], data, data_size-sizeof(dest)); 
+  count += (data_size-sizeof(dest));
+
+  size_t written = fwrite(buffer, 1, count, fd);
+  if(written <= 0)
   {
     if(ferror(fd))
     {
@@ -108,8 +126,8 @@ int writeOutput(uint32_t dest, char* data, int data_size)
     }
 
   }
-  printf("writen: %zd\n", count);
-  return count;
+  printf("writen: %zd\n", written);
+  return written;
 }
 
 //***************************************************************
