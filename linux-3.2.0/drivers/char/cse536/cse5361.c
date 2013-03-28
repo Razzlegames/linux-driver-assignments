@@ -84,6 +84,7 @@ static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
 
 DEFINE_SPINLOCK(rec_lock);
+struct semaphore receive_semaphore;
 
 //************************************************************************
 struct receive_list* allocateBuffer(unsigned char* buffer, 
@@ -137,9 +138,11 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 static struct receive_list* getOldestBufferNotRead(void)
 {
   struct receive_list* h = NULL;
+  struct receive_list* to_return = NULL;
   int i = 0;
   //mutex_lock(&receive_list_mutex);
   //spin_lock_bh(&rec_lock);
+  down(&receive_semaphore);
 
   h = receive_list_head;
   if(h == NULL)
@@ -147,7 +150,8 @@ static struct receive_list* getOldestBufferNotRead(void)
     //DEBUG("head of list was null!\n");
 
     //spin_unlock_bh(&rec_lock);
-    return NULL;
+    to_return = NULL;
+    goto endgetOldestBufferNotRead;
   }
 
   //receive_list_head = h->next;
@@ -161,18 +165,20 @@ static struct receive_list* getOldestBufferNotRead(void)
   if(h->next == NULL)
   {
     //spin_unlock_bh(&rec_lock);
-    return NULL;
+    to_return = NULL;
+    goto endgetOldestBufferNotRead;
   }
 
-  last_read = h->next;
+  to_return = h->next;
+  last_read = to_return;
   DEBUG("Returning found buffer!\n");
 
+endgetOldestBufferNotRead:
+  up(&receive_semaphore);
   //spin_unlock_bh(&rec_lock);
-  return h->next;
-
   //mutex_unlock(&receive_list_mutex);
+  return to_return;
 
-  //return h;
 }
 
 //************************************************************************
@@ -186,6 +192,7 @@ static void deleteBuffers(void)
   struct receive_list* h = NULL;
   int i = 0;
 
+  down(&receive_semaphore);
   //spin_lock_bh(&rec_lock);
 
   h = receive_list_head;
@@ -199,6 +206,8 @@ static void deleteBuffers(void)
     i++;
   }
   receive_list_head = NULL;
+
+  up(&receive_semaphore);
   //spin_unlock_bh(&rec_lock);
 }
 
@@ -210,6 +219,7 @@ void addBuffer(unsigned char* buffer, size_t size)
 
   //spin_lock_bh(&rec_lock);
   //mutex_lock(&receive_list_mutex);
+  down(&receive_semaphore);
 
   if(receive_list_head == NULL)
   {
@@ -217,18 +227,27 @@ void addBuffer(unsigned char* buffer, size_t size)
     receive_list_head = allocateBuffer(buffer, size);
     receive_list_tail = receive_list_head;
     list_length++;
-    //spin_unlock_bh(&rec_lock);
-    return;
+
+    goto endAddBuffer;
+  }
+  if(receive_list_tail == NULL)
+  {
+    ERROR("receive_list_tail is NULL! "
+        "Should never happen!\n");
+
+    goto endAddBuffer;
   }
 
   receive_list_tail->next = allocateBuffer(buffer, size);
   receive_list_tail = receive_list_tail->next;
-  list_length++;
   DEBUG("Allocated %d buffer on tail\n", list_length);
+  list_length++;
 
+endAddBuffer:
+  up(&receive_semaphore);
   //spin_unlock_bh(&rec_lock);
   //mutex_unlock(&receive_list_mutex);
-
+  return;
 }
 //************************************************************************
 static const struct net_protocol cse536_protocol = {
@@ -246,8 +265,8 @@ int cse536_receive(struct sk_buff* skb)
 {
 
   unsigned char* transport_data = NULL;
-  unsigned char* cur = NULL;
-  unsigned char* end = NULL;
+  //unsigned char* cur = NULL;
+  //unsigned char* end = NULL;
   //int i = 0;
 
   if(skb == NULL)
@@ -276,16 +295,16 @@ int cse536_receive(struct sk_buff* skb)
   DEBUG("data: %s\n",
       transport_data);
 
-  DEBUG("Packet in hex: ");
-  cur = transport_data;
-  end = transport_data + skb->len;
-  while(cur < end)
-  {
-
-    printk("%02x", *cur);
-    cur++;
-  }
-  printk("\n");
+  //  DEBUG("Packet in hex: ");
+  //  cur = transport_data;
+  //  end = transport_data + skb->len;
+  //  while(cur < end)
+  //  {
+  //
+  //    printk("%02x", *cur);
+  //    cur++;
+  //  }
+  //  printk("\n");
 
   addBuffer(transport_data, skb->len);
 
@@ -317,14 +336,15 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   size_t read_amount = 0;
 
   //spin_lock_bh(&rec_lock);
+  down(&receive_semaphore);
 
   //DEBUG("entered read! count: %zu\n", count);
 
   read_entry = getOldestBufferNotRead();
   if(read_entry == NULL)
   {
-    //spin_unlock_bh(&rec_lock);
-    return 0;
+    read_amount = 0;
+    goto endCse536Read;
   }
 
   if(MAX_BUFFER_SIZE > count)
@@ -339,6 +359,8 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   memcpy(buf, read_entry->buffer, read_amount);
   printk("cse536_read: returning %zu bytes\n", read_amount);
 
+endCse536Read:
+  up(&receive_semaphore);
   //spin_unlock_bh(&rec_lock);
   return read_amount;
 }
@@ -444,6 +466,8 @@ static int __init cse536_init(void)
     inet_del_protocol(&cse536_protocol, IPPROTO_CSE536);
     return ret;
   }
+
+  sema_init(&receive_semaphore, 1);
 
   printk("cse536: registered module successfully!\n");
   /* Init processing here... */
