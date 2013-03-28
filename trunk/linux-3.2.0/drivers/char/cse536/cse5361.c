@@ -24,6 +24,7 @@
 #include <linux/netdevice.h>
 #include <linux/inetdevice.h>
 #include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include "cse5361.h"
 
 /// Attempt to use an unreserved IP protocol number
@@ -74,66 +75,136 @@ static __be32 getSourceAddr(void);
 void addBuffer(unsigned char* buffer, size_t size);
 struct receive_list* allocateBuffer(unsigned char* buffer, 
     size_t size);
-struct receive_list* getOldestBuffer(void);
+static struct receive_list* getOldestBufferNotRead(void);
+static void deleteBuffers(void);
+
+static struct receive_list* last_read = NULL;
+//static void clearOldBuffers(void);
+
+DEFINE_SPINLOCK(rec_lock);
 
 //************************************************************************
 struct receive_list* allocateBuffer(unsigned char* buffer, 
     size_t size)
 {
+
     struct receive_list* r =  (struct receive_list*)kmalloc(
         sizeof(struct receive_list), GFP_KERNEL);
     if(r == NULL)
     {
       ERROR("Could not allocate space for receive list!\n");
+      return NULL;
     }
     memcpy(r->buffer, buffer, size);
     r->size = size;
     return r;
 }
 
+////************************************************************************
+//static void clearOldBuffers(void)
+//{
+//
+//    struct receive_list* r =  receive_list_head;
+//    struct receive_list* to_clear =  NULL;
+//    while(r != last_read)
+//    {
+//      if(r == NULL)
+//      {
+//
+//        return;
+//      }
+//      to_clear = r;
+//      r = r->next;
+//      kfree(to_clear);
+//    }
+//}
+
+
 //************************************************************************
-struct receive_list* getOldestBuffer(void)
+struct receive_list* getOldestBufferNotRead(void)
 {
   struct receive_list* h = NULL;
 
-  mutex_lock(&receive_list_mutex);
+  //mutex_lock(&receive_list_mutex);
+  //spin_lock_bh(&rec_lock);
 
   h = receive_list_head;
-
-  if(receive_list_head == NULL)
+  if(h == NULL)
   {
-    DEBUG("List is empty!\n");
-    return h;
+    //spin_unlock_bh(&rec_lock);
+    //DEBUG("head of list was null!\n");
+    return NULL;
   }
-  receive_list_head = receive_list_head->next;
 
-  mutex_unlock(&receive_list_mutex);
+  //receive_list_head = h->next;
 
-  return h;
+  while(h->next != NULL && h != last_read)
+  {
+    h = h->next;
+  }
+  if(h->next == NULL)
+  {
+    return NULL;
+  }
+
+  last_read = h->next;
+  DEBUG("Returning found buffer!\n");
+  return h->next;
+
+  //spin_unlock_bh(&rec_lock);
+  //mutex_unlock(&receive_list_mutex);
+
+  //return h;
 }
 
+//************************************************************************
+/**
+ *  Delete all linked lists of received packets
+ */
+static void deleteBuffers(void)
+{
+
+  struct receive_list* to_delete = NULL;
+  struct receive_list* h = receive_list_head;
+  int i = 0;
+  DEBUG("Delete all buffers in module:\n");
+  while(h != NULL)
+  {
+    to_delete = h;
+    h = h->next;
+    kfree(to_delete);
+    DEBUG("Deleted buffer: %d\n", i);
+    i++;
+  }
+
+}
 
 //************************************************************************
 void addBuffer(unsigned char* buffer, size_t size)
 {
   struct receive_list* list_current = NULL;
+  DEBUG("Adding packet[%zu]\n", size);
 
-  mutex_lock(&receive_list_mutex);
+  //spin_lock_bh(&rec_lock);
+  //mutex_lock(&receive_list_mutex);
 
   list_current = receive_list_head;
   if(list_current == NULL)
   {
-    list_current = allocateBuffer(buffer, size);
+    DEBUG("Allocated package on head\n");
+    receive_list_head = allocateBuffer(buffer, size);
+    //spin_unlock_bh(&rec_lock);
     return;
   }
 
-  while(list_current->next == NULL)
+  while(list_current->next != NULL)
   {
     list_current = list_current->next;
   }
   list_current->next = allocateBuffer(buffer, size);
 
-  mutex_unlock(&receive_list_mutex);
+  //spin_unlock_bh(&rec_lock);
+  //mutex_unlock(&receive_list_mutex);
 
 }
 //************************************************************************
@@ -182,16 +253,16 @@ int cse536_receive(struct sk_buff* skb)
   DEBUG("data: %s\n",
       transport_data);
 
-  DEBUG("Packet in hex: ");
-  cur = transport_data;
-  end = transport_data + skb->len;
-  while(cur < end)
-  {
-
-    printk("%02x", *cur);
-    cur++;
-  }
-  printk("\n");
+  //  DEBUG("Packet in hex: ");
+  //  cur = transport_data;
+  //  end = transport_data + skb->len;
+  //  while(cur < end)
+  //  {
+  //
+  //    printk("%02x", *cur);
+  //    cur++;
+  //  }
+  //  printk("\n");
 
   addBuffer(transport_data, skb->len);
 
@@ -219,11 +290,12 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
     loff_t *ptr)
 {
 
-  size_t retCount = 0;
   struct receive_list* read_entry = NULL;
   size_t read_amount = 0;
 
-  read_entry = getOldestBuffer();
+  //DEBUG("entered read! count: %zu\n", count);
+
+  read_entry = getOldestBufferNotRead();
   if(read_entry == NULL)
   {
     return 0;
@@ -239,9 +311,8 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   }
 
   memcpy(buf, read_entry->buffer, read_amount);
-
-  printk("cse536_read: returning %zu bytes\n", retCount);
-  return retCount;
+  printk("cse536_read: returning %zu bytes\n", read_amount);
+  return read_amount;
 }
 
 //************************************************************************
@@ -361,6 +432,8 @@ static void __exit cse536_exit(void)
     ERROR("Could not unregister protocol!\n");
   }
   unregister_chrdev(CSE536_MAJOR, "cse5361"); 
+
+  deleteBuffers();
   printk("cse536 module Exit\n");
 }
 
@@ -510,7 +583,8 @@ static void cse536_err(struct sk_buff *skb, u32 info)
 
   struct net *net = dev_net(skb->dev);
   const struct iphdr *iph = (const struct iphdr *)skb->data;
-  struct ip_esp_hdr *esph = (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
+  struct ip_esp_hdr *esph = 
+    (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
   struct xfrm_state *x;
 
   if (icmp_hdr(skb)->type != ICMP_DEST_UNREACH ||
