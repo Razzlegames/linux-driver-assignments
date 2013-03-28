@@ -143,7 +143,7 @@ static struct receive_list* getOldestBufferNotRead(void)
   int i = 0;
   //mutex_lock(&receive_list_mutex);
   //spin_lock_bh(&rec_lock);
-  down(&receive_semaphore);
+  //down(&receive_semaphore);
 
   h = receive_list_head;
   if(h == NULL)
@@ -156,26 +156,31 @@ static struct receive_list* getOldestBufferNotRead(void)
   }
 
   //receive_list_head = h->next;
+  to_return = receive_list_head;
+  receive_list_head = receive_list_head->next;
 
-  while(h->next != NULL && h != last_read)
-  {
-    h = h->next;
-    //DEBUG("Looked in: %d\n", i);
-    i++;
-  }
-  if(h->next == NULL)
-  {
-    //spin_unlock_bh(&rec_lock);
-    to_return = NULL;
-    goto endgetOldestBufferNotRead;
-  }
+  //  // Find the link last read from
+  //  while(h->next != NULL && h != last_read)
+  //  {
+  //    h = h->next;
+  //    DEBUG("Looked in: list[%d]: %p, "
+  //        "for: %p\n", i, h, last_read);
+  //    i++;
+  //  }
+  //  if(h->next == NULL)
+  //  {
+  //    //spin_unlock_bh(&rec_lock);
+  //    to_return = NULL;
+  //    goto endgetOldestBufferNotRead;
+  //  }
+  //
+  //  to_return = h->next;
+  //  last_read = to_return;
 
-  to_return = h->next;
-  last_read = to_return;
-  DEBUG("Returning found buffer!\n");
+  DEBUG("Returning found buffer: %p!\n", to_return);
 
 endgetOldestBufferNotRead:
-  up(&receive_semaphore);
+  //up(&receive_semaphore);
   //spin_unlock_bh(&rec_lock);
   //mutex_unlock(&receive_list_mutex);
   return to_return;
@@ -567,7 +572,6 @@ static void sendPacketU32(size_t data_size,
     ERROR("Could not load payload data!\n");
   }
   DEBUG("Done saving payload data\n");
-
 
   // Create space in sk_buff for iphdr
   DEBUG("Creating space in sk_buff for iphdr\n");
