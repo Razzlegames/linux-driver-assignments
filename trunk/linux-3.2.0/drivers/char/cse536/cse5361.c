@@ -69,7 +69,7 @@ static int list_length = 0;
 //    const char* DADDR_STRING);
 
 static void sendPacketU32(size_t data_size, 
-   unsigned const char* buffer,
+    unsigned const char* buffer,
     __be32 saddr, __be32 daddr);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
@@ -92,27 +92,27 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
     size_t size)
 {
 
-    struct receive_list* r =  (struct receive_list*)kmalloc(
-        sizeof(struct receive_list), GFP_KERNEL);
+  struct receive_list* r =  (struct receive_list*)kmalloc(
+      sizeof(struct receive_list), GFP_KERNEL);
 
-    if(r == NULL)
-    {
-      ERROR("Could not allocate space for receive list!\n");
-      return NULL;
-    }
+  if(r == NULL)
+  {
+    ERROR("Could not allocate space for receive list!\n");
+    return NULL;
+  }
 
-    // Zero out entire mem for link entry
-    memset(r, 0, sizeof(struct receive_list));
+  // Zero out entire mem for link entry
+  memset(r, 0, sizeof(struct receive_list));
 
-    if(size > MAX_BUFFER_SIZE)
-    {
-      size = MAX_BUFFER_SIZE;
-      DEBUG("Adjusted size to: %zu\n", size);
-    }
-    memcpy(r->buffer, buffer, size);
-    r->size = size;
-    r->next = NULL;
-    return r;
+  if(size > MAX_BUFFER_SIZE)
+  {
+    size = MAX_BUFFER_SIZE;
+    DEBUG("Adjusted size to: %zu\n", size);
+  }
+  memcpy(r->buffer, buffer, size);
+  r->size = size;
+  r->next = NULL;
+  return r;
 }
 
 ////************************************************************************
@@ -252,10 +252,10 @@ endAddBuffer:
 }
 //************************************************************************
 static const struct net_protocol cse536_protocol = {
-	.handler	=	cse536_receive,
-	.err_handler	=	cse536_err,
-	.no_policy	=	1,
-	.netns_ok	=	1,
+  .handler	=	cse536_receive,
+  .err_handler	=	cse536_err,
+  .no_policy	=	1,
+  .netns_ok	=	1,
 };
 
 //************************************************************************
