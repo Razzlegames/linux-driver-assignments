@@ -24,6 +24,7 @@
 #include <linux/netdevice.h>
 #include <linux/inetdevice.h>
 #include <linux/mutex.h>
+#include "cse5361.h"
 
 /// Attempt to use an unreserved IP protocol number
 #define IPPROTO_CSE536  253
@@ -35,7 +36,6 @@
 #define DEBUG(s, ...) \
   printk(KERN_DEBUG "%s:%d DEBUG: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
 
-
 static int debug_enable = 0;
 module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
@@ -43,7 +43,7 @@ struct file_operations cse536_fops;
 
 unsigned char* rec_buffer = NULL;
 
-#define MAX_BUFFER_SIZE 256
+#define MAX_BUFFER_SIZE 257
 /**
  *  Create a linked list to keep track of all buffers
  *   received on the network
@@ -82,6 +82,10 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 {
     struct receive_list* r =  (struct receive_list*)kmalloc(
         sizeof(struct receive_list), GFP_KERNEL);
+    if(r == NULL)
+    {
+      ERROR("Could not allocate space for receive list!\n");
+    }
     memcpy(r->buffer, buffer, size);
     r->size = size;
     return r;
@@ -189,7 +193,7 @@ int cse536_receive(struct sk_buff* skb)
   }
   printk("\n");
 
-  //allocateBuffer(transport_data, 
+  addBuffer(transport_data, skb->len);
 
   return 0;
 
@@ -216,7 +220,26 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
 {
 
   size_t retCount = 0;
-  retCount = sprintf(buf, "cse536");
+  struct receive_list* read_entry = NULL;
+  size_t read_amount = 0;
+
+  read_entry = getOldestBuffer();
+  if(read_entry == NULL)
+  {
+    return 0;
+  }
+
+  if(MAX_BUFFER_SIZE > count)
+  {
+    read_amount = count;
+  }
+  else
+  {
+    read_amount = MAX_BUFFER_SIZE;
+  }
+
+  memcpy(buf, read_entry->buffer, read_amount);
+
   printk("cse536_read: returning %zu bytes\n", retCount);
   return retCount;
 }
@@ -259,6 +282,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   const unsigned char* data_buff = NULL;
   __be32 daddr = 0;
   __be32 saddr = getSourceAddr();
+  size_t count_to_send = 0;
 
   if(buf == NULL)
   {
@@ -266,19 +290,26 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     ERROR("buffer to send was null!!\n");
     return 0;
   }
+  else if(*buf == IP_RECORD)
+  {
 
-  DEBUG("cse536_write: accepting %zd bytes\n", count);
-  daddr_ptr = (__be32*)buf;
-  data_buff = (unsigned char*)(&daddr_ptr[1]);
-  daddr = *daddr_ptr;
-  //saddr = in_aton(SADDR_STRING);
+    DEBUG("cse536_write: accepting %zd bytes\n", count);
+    // Move past record type byte
+    daddr_ptr = (__be32*)&buf[1];
+    data_buff = (unsigned char*)(&daddr_ptr[1]);
+    daddr = *daddr_ptr;
 
-  DEBUG("source addr: 0x%04x\n", saddr);
-  DEBUG("destination addr: 0x%04x\n", daddr);
-  DEBUG("data_buff:%s\n", data_buff);
+    DEBUG("source addr: 0x%04x\n", saddr);
+    DEBUG("destination addr: 0x%04x\n", daddr);
+    DEBUG("data_buff:%s\n", data_buff);
 
-  sendPacketU32(count - sizeof(__be32) , data_buff, saddr, daddr);
-  return count;
+    // Count to send = count received - ip size - recordtype size;
+    count_to_send = count - sizeof(__be32) - sizeof(uint8_t);
+
+    sendPacketU32(count_to_send , data_buff, saddr, daddr);
+    return count;
+  }
+  return 0;
 }
 
 //************************************************************************
@@ -307,13 +338,13 @@ static int __init cse536_init(void)
   //		return -EAGAIN;
   //	}
 
-	ret = inet_add_protocol(&cse536_protocol, IPPROTO_CSE536);
+  ret = inet_add_protocol(&cse536_protocol, IPPROTO_CSE536);
   if(ret < 0)
   {
-		ERROR("Could not register cse536_protocol!");
+    ERROR("Could not register cse536_protocol!");
     inet_del_protocol(&cse536_protocol, IPPROTO_CSE536);
-		return ret;
-	}
+    return ret;
+  }
 
   printk("cse536: registered module successfully!\n");
   /* Init processing here... */
