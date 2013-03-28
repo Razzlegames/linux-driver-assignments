@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <signal.h>
+
 #include "linux-3.2.0/drivers/char/cse536/cse5361.h"
 
 
@@ -32,6 +34,30 @@ int data_to_send_size = 0;
 FILE *fd = NULL;
 const int IP_ADDRESS_SIZE = sizeof(uint32_t);
 
+//***************************************************************
+/**
+ *  Handle all signals to program
+ */
+void int_handler(int sig)
+{
+  printf("Trying to quit...\n");
+  printf("Closing any open file handles..\n");
+  if(fd && fclose(fd) != 0)
+  {
+
+    printf("ERROR: could not close device!\n");
+    exit(1);
+
+  }
+  fd = NULL;
+  exit(0);
+}
+
+
+//***************************************************************
+/**
+ *  Process all command line arguments
+ */
 void processArgs(int argc, char** argv)
 {
   printf("Processing %d arguments\n", argc-1);
@@ -138,7 +164,7 @@ void waitForPackets()
 {
   char buffer[257];
   int count = 0;
-  printf("Progam must be stopped to exit...");
+  printf("Progam must be stopped to exit...\n");
   while(1)
   {
 
@@ -159,7 +185,7 @@ void waitForPackets()
         printf("%02x", buffer[i]);
 
       }
-
+      printf("\n");
     }
   }
 
@@ -169,6 +195,7 @@ void waitForPackets()
 int main(int argc, char** argv)
 {
 
+  signal(SIGINT, int_handler);
   processArgs(argc, argv);
 
   fd = openDev("rb+");
