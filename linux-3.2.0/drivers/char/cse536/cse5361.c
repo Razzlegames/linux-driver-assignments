@@ -81,7 +81,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 static struct receive_list* getOldestBufferNotRead(void);
 static void deleteBuffers(void);
 
-static struct receive_list* last_read = NULL;
+//static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
 
 DEFINE_SPINLOCK(rec_lock);
@@ -613,7 +613,6 @@ static void sendPacketU32(size_t data_size,
   DEBUG("Done Sending IP Packet!\n");
 
 }
-
 
 ////************************************************************************
 ///**
