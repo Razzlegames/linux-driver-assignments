@@ -162,6 +162,7 @@ int writeOutput(uint32_t dest, char* data, int data_size)
  */
 void waitForPackets()
 {
+
   char buffer[257];
   int count = 0;
   printf("Progam must be stopped to exit...\n");
