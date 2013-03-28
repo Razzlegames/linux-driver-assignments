@@ -102,6 +102,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
     }
     memcpy(r->buffer, buffer, size);
     r->size = size;
+    r->next = NULL;
     return r;
 }
 
