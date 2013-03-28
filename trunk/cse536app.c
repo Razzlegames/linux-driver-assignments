@@ -27,6 +27,7 @@ int data_to_send_size = 0;
 
 // File handle to write to
 FILE *fd = NULL;
+const int IP_ADDRESS_SIZE = sizeof(uint32_t);
 
 void processArgs(int argc, char** argv)
 {
@@ -53,7 +54,7 @@ void processArgs(int argc, char** argv)
         if(optarg != NULL)
         {
           data_to_send_size = strlen(optarg) +
-              MAX_IP_STR + 2;
+              IP_ADDRESS_SIZE+1;
           data_to_send = (char*)calloc(
               data_to_send_size, 1);
           strncpy(data_to_send, optarg, data_to_send_size-1);
