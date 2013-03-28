@@ -134,7 +134,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 
 
 //************************************************************************
-struct receive_list* getOldestBufferNotRead(void)
+static struct receive_list* getOldestBufferNotRead(void)
 {
   struct receive_list* h = NULL;
   int i = 0;
