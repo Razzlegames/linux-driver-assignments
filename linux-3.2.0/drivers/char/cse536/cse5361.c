@@ -60,6 +60,8 @@ struct receive_list
 static DEFINE_MUTEX(receive_list_mutex);
 /// The head of the linked list to receive data
 static struct receive_list* receive_list_head = NULL;
+static struct receive_list* receive_list_tail = NULL;
+static int list_length = 0;
 
 //static void sendPacket(size_t data_size, const char* buffer,
 //    const char* SADDR_STRING,
@@ -90,15 +92,20 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 
     struct receive_list* r =  (struct receive_list*)kmalloc(
         sizeof(struct receive_list), GFP_KERNEL);
+
     if(r == NULL)
     {
       ERROR("Could not allocate space for receive list!\n");
       return NULL;
     }
+
+    // Zero out entire mem for link entry
+    memset(r, 0, sizeof(struct receive_list));
+
     if(size > MAX_BUFFER_SIZE)
     {
       size = MAX_BUFFER_SIZE;
-      DEBUG("Adjusted size to: %d\n", size);
+      DEBUG("Adjusted size to: %zu\n", size);
     }
     memcpy(r->buffer, buffer, size);
     r->size = size;
@@ -132,14 +139,14 @@ struct receive_list* getOldestBufferNotRead(void)
   struct receive_list* h = NULL;
   int i = 0;
   //mutex_lock(&receive_list_mutex);
-  spin_lock_bh(&rec_lock);
+  //spin_lock_bh(&rec_lock);
 
   h = receive_list_head;
   if(h == NULL)
   {
     //DEBUG("head of list was null!\n");
 
-    spin_unlock_bh(&rec_lock);
+    //spin_unlock_bh(&rec_lock);
     return NULL;
   }
 
@@ -153,14 +160,14 @@ struct receive_list* getOldestBufferNotRead(void)
   }
   if(h->next == NULL)
   {
-    spin_unlock_bh(&rec_lock);
+    //spin_unlock_bh(&rec_lock);
     return NULL;
   }
 
   last_read = h->next;
   DEBUG("Returning found buffer!\n");
 
-  spin_unlock_bh(&rec_lock);
+  //spin_unlock_bh(&rec_lock);
   return h->next;
 
   //mutex_unlock(&receive_list_mutex);
@@ -174,11 +181,14 @@ struct receive_list* getOldestBufferNotRead(void)
  */
 static void deleteBuffers(void)
 {
-  spin_lock_bh(&rec_lock);
 
   struct receive_list* to_delete = NULL;
-  struct receive_list* h = receive_list_head;
+  struct receive_list* h = NULL;
   int i = 0;
+
+  //spin_lock_bh(&rec_lock);
+
+  h = receive_list_head;
   DEBUG("Delete all buffers in module:\n");
   while(h != NULL)
   {
@@ -189,36 +199,34 @@ static void deleteBuffers(void)
     i++;
   }
   receive_list_head = NULL;
-  spin_unlock_bh(&rec_lock);
+  //spin_unlock_bh(&rec_lock);
 }
 
 //************************************************************************
 void addBuffer(unsigned char* buffer, size_t size)
 {
-  struct receive_list* list_current = NULL;
+
   DEBUG("Adding packet[%zu]\n", size);
 
-  spin_lock_bh(&rec_lock);
+  //spin_lock_bh(&rec_lock);
   //mutex_lock(&receive_list_mutex);
 
-  list_current = receive_list_head;
-  if(list_current == NULL)
+  if(receive_list_head == NULL)
   {
-    DEBUG("Allocated buffer on head\n");
+    DEBUG("Allocated %d buffer on head\n", list_length);
     receive_list_head = allocateBuffer(buffer, size);
-
-    spin_unlock_bh(&rec_lock);
+    receive_list_tail = receive_list_head;
+    list_length++;
+    //spin_unlock_bh(&rec_lock);
     return;
   }
 
-  while(list_current->next != NULL)
-  {
-    list_current = list_current->next;
-  }
-  DEBUG("Allocated buffer on tail\n");
-  list_current->next = allocateBuffer(buffer, size);
+  receive_list_tail->next = allocateBuffer(buffer, size);
+  receive_list_tail = receive_list_tail->next;
+  list_length++;
+  DEBUG("Allocated %d buffer on tail\n", list_length);
 
-  spin_unlock_bh(&rec_lock);
+  //spin_unlock_bh(&rec_lock);
   //mutex_unlock(&receive_list_mutex);
 
 }
@@ -279,7 +287,7 @@ int cse536_receive(struct sk_buff* skb)
   }
   printk("\n");
 
-  //addBuffer(transport_data, skb->len);
+  addBuffer(transport_data, skb->len);
 
   return 0;
 
@@ -308,11 +316,14 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   struct receive_list* read_entry = NULL;
   size_t read_amount = 0;
 
+  //spin_lock_bh(&rec_lock);
+
   //DEBUG("entered read! count: %zu\n", count);
 
   read_entry = getOldestBufferNotRead();
   if(read_entry == NULL)
   {
+    //spin_unlock_bh(&rec_lock);
     return 0;
   }
 
@@ -327,6 +338,8 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
 
   memcpy(buf, read_entry->buffer, read_amount);
   printk("cse536_read: returning %zu bytes\n", read_amount);
+
+  //spin_unlock_bh(&rec_lock);
   return read_amount;
 }
 
