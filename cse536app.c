@@ -136,13 +136,14 @@ int writeOutput(uint32_t dest, char* data, int data_size)
  */
 void waitForPackets()
 {
-  char buffer[0xFF];
+  char buffer[257];
   int count = 0;
+  printf("Progam must be stopped to exit...");
   while(1)
   {
 
-    printf("Progam must be stopped to exit..."
-        "Waiting for packets\n");
+    //    printf("Progam must be stopped to exit..."
+    //        "Waiting for packets\n");
 
     count = fread(buffer, sizeof(buffer), 1, fd);
 
@@ -150,13 +151,14 @@ void waitForPackets()
     {
       printf("Read packet data string: %s\n", 
           buffer);
-    }
 
-    printf("Hex Data: ");
-    int i;
-    for(i = 0; i < count; i++)
-    {
-      printf("%02x", buffer[i]);
+      printf("Hex Data: ");
+      int i;
+      for(i = 0; i < count; i++)
+      {
+        printf("%02x", buffer[i]);
+
+      }
 
     }
   }
@@ -169,7 +171,7 @@ int main(int argc, char** argv)
 
   processArgs(argc, argv);
 
-  fd = openDev("rb+");
+  fd = openDev("r");
 
   uint32_t daddr = 0;
 
