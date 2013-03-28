@@ -130,7 +130,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 struct receive_list* getOldestBufferNotRead(void)
 {
   struct receive_list* h = NULL;
-
+  int i = 0;
   //mutex_lock(&receive_list_mutex);
   spin_lock_bh(&rec_lock);
 
@@ -148,6 +148,8 @@ struct receive_list* getOldestBufferNotRead(void)
   while(h->next != NULL && h != last_read)
   {
     h = h->next;
+    //DEBUG("Looked in: %d\n", i);
+    i++;
   }
   if(h->next == NULL)
   {
