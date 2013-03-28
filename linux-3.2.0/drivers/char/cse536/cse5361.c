@@ -45,6 +45,7 @@ struct file_operations cse536_fops;
 unsigned char* rec_buffer = NULL;
 
 #define MAX_BUFFER_SIZE 257
+
 /**
  *  Create a linked list to keep track of all buffers
  *   received on the network
@@ -223,9 +224,9 @@ void addBuffer(unsigned char* buffer, size_t size)
 
   if(receive_list_head == NULL)
   {
-    DEBUG("Allocated %d buffer on head\n", list_length);
     receive_list_head = allocateBuffer(buffer, size);
     receive_list_tail = receive_list_head;
+    DEBUG("Allocated %d buffer on head\n", list_length);
     list_length++;
 
     goto endAddBuffer;
