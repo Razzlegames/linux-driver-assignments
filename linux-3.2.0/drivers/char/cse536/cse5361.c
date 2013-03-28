@@ -95,6 +95,11 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
       ERROR("Could not allocate space for receive list!\n");
       return NULL;
     }
+    if(size > MAX_BUFFER_SIZE)
+    {
+      size = MAX_BUFFER_SIZE;
+      DEBUG("Adjusted size to: %d\n", size);
+    }
     memcpy(r->buffer, buffer, size);
     r->size = size;
     return r;
@@ -126,13 +131,14 @@ struct receive_list* getOldestBufferNotRead(void)
   struct receive_list* h = NULL;
 
   //mutex_lock(&receive_list_mutex);
-  //spin_lock_bh(&rec_lock);
+  spin_lock_bh(&rec_lock);
 
   h = receive_list_head;
   if(h == NULL)
   {
-    //spin_unlock_bh(&rec_lock);
     //DEBUG("head of list was null!\n");
+
+    spin_unlock_bh(&rec_lock);
     return NULL;
   }
 
@@ -144,14 +150,16 @@ struct receive_list* getOldestBufferNotRead(void)
   }
   if(h->next == NULL)
   {
+    spin_unlock_bh(&rec_lock);
     return NULL;
   }
 
   last_read = h->next;
   DEBUG("Returning found buffer!\n");
+
+  spin_unlock_bh(&rec_lock);
   return h->next;
 
-  //spin_unlock_bh(&rec_lock);
   //mutex_unlock(&receive_list_mutex);
 
   //return h;
@@ -163,6 +171,7 @@ struct receive_list* getOldestBufferNotRead(void)
  */
 static void deleteBuffers(void)
 {
+  spin_lock_bh(&rec_lock);
 
   struct receive_list* to_delete = NULL;
   struct receive_list* h = receive_list_head;
@@ -176,7 +185,8 @@ static void deleteBuffers(void)
     DEBUG("Deleted buffer: %d\n", i);
     i++;
   }
-
+  receive_list_head = NULL;
+  spin_unlock_bh(&rec_lock);
 }
 
 //************************************************************************
@@ -185,15 +195,16 @@ void addBuffer(unsigned char* buffer, size_t size)
   struct receive_list* list_current = NULL;
   DEBUG("Adding packet[%zu]\n", size);
 
-  //spin_lock_bh(&rec_lock);
+  spin_lock_bh(&rec_lock);
   //mutex_lock(&receive_list_mutex);
 
   list_current = receive_list_head;
   if(list_current == NULL)
   {
-    DEBUG("Allocated package on head\n");
+    DEBUG("Allocated buffer on head\n");
     receive_list_head = allocateBuffer(buffer, size);
-    //spin_unlock_bh(&rec_lock);
+
+    spin_unlock_bh(&rec_lock);
     return;
   }
 
@@ -201,9 +212,10 @@ void addBuffer(unsigned char* buffer, size_t size)
   {
     list_current = list_current->next;
   }
+  DEBUG("Allocated buffer on tail\n");
   list_current->next = allocateBuffer(buffer, size);
 
-  //spin_unlock_bh(&rec_lock);
+  spin_unlock_bh(&rec_lock);
   //mutex_unlock(&receive_list_mutex);
 
 }
