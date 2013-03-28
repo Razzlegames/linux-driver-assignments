@@ -268,18 +268,18 @@ int cse536_receive(struct sk_buff* skb)
   DEBUG("data: %s\n",
       transport_data);
 
-  //  DEBUG("Packet in hex: ");
-  //  cur = transport_data;
-  //  end = transport_data + skb->len;
-  //  while(cur < end)
-  //  {
-  //
-  //    printk("%02x", *cur);
-  //    cur++;
-  //  }
-  //  printk("\n");
+  DEBUG("Packet in hex: ");
+  cur = transport_data;
+  end = transport_data + skb->len;
+  while(cur < end)
+  {
 
-  addBuffer(transport_data, skb->len);
+    printk("%02x", *cur);
+    cur++;
+  }
+  printk("\n");
+
+  //addBuffer(transport_data, skb->len);
 
   return 0;
 

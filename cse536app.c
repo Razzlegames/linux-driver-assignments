@@ -171,7 +171,7 @@ int main(int argc, char** argv)
 
   processArgs(argc, argv);
 
-  fd = openDev("r");
+  fd = openDev("rb+");
 
   uint32_t daddr = 0;
 
