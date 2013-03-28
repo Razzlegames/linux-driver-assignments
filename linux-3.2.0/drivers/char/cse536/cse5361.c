@@ -23,6 +23,7 @@
 #include <linux/ip.h>
 #include <linux/netdevice.h>
 #include <linux/inetdevice.h>
+#include <linux/mutex.h>
 
 /// Attempt to use an unreserved IP protocol number
 #define IPPROTO_CSE536  253
@@ -40,17 +41,97 @@ module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
 struct file_operations cse536_fops;
 
+unsigned char* rec_buffer = NULL;
+
+#define MAX_BUFFER_SIZE 256
+/**
+ *  Create a linked list to keep track of all buffers
+ *   received on the network
+ */
+struct receive_list
+{
+  unsigned char buffer[MAX_BUFFER_SIZE];
+  size_t size;
+  struct receive_list* next;
+};
+
+/// Make sure writes/reads are synced to this list
+static DEFINE_MUTEX(receive_list_mutex);
+/// The head of the linked list to receive data
+static struct receive_list* receive_list_head = NULL;
+
 //static void sendPacket(size_t data_size, const char* buffer,
 //    const char* SADDR_STRING,
 //    const char* DADDR_STRING);
 
-static void sendPacketU32(size_t data_size, const char* buffer,
+static void sendPacketU32(size_t data_size, 
+   unsigned const char* buffer,
     __be32 saddr, __be32 daddr);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
 int cse536_receive(struct sk_buff* skb);
 static __be32 getSourceAddr(void);
+void addBuffer(unsigned char* buffer, size_t size);
+struct receive_list* allocateBuffer(unsigned char* buffer, 
+    size_t size);
+struct receive_list* getOldestBuffer(void);
 
+//************************************************************************
+struct receive_list* allocateBuffer(unsigned char* buffer, 
+    size_t size)
+{
+    struct receive_list* r =  (struct receive_list*)kmalloc(
+        sizeof(struct receive_list), GFP_KERNEL);
+    memcpy(r->buffer, buffer, size);
+    r->size = size;
+    return r;
+}
+
+//************************************************************************
+struct receive_list* getOldestBuffer(void)
+{
+  struct receive_list* h = NULL;
+
+  mutex_lock(&receive_list_mutex);
+
+  h = receive_list_head;
+
+  if(receive_list_head == NULL)
+  {
+    DEBUG("List is empty!\n");
+    return h;
+  }
+  receive_list_head = receive_list_head->next;
+
+  mutex_unlock(&receive_list_mutex);
+
+  return h;
+}
+
+
+//************************************************************************
+void addBuffer(unsigned char* buffer, size_t size)
+{
+  struct receive_list* list_current = NULL;
+
+  mutex_lock(&receive_list_mutex);
+
+  list_current = receive_list_head;
+  if(list_current == NULL)
+  {
+    list_current = allocateBuffer(buffer, size);
+    return;
+  }
+
+  while(list_current->next == NULL)
+  {
+    list_current = list_current->next;
+  }
+  list_current->next = allocateBuffer(buffer, size);
+
+  mutex_unlock(&receive_list_mutex);
+
+}
 //************************************************************************
 static const struct net_protocol cse536_protocol = {
 	.handler	=	cse536_receive,
@@ -69,7 +150,7 @@ int cse536_receive(struct sk_buff* skb)
   unsigned char* transport_data = NULL;
   unsigned char* cur = NULL;
   unsigned char* end = NULL;
-  int i = 0;
+  //int i = 0;
 
   if(skb == NULL)
   {
@@ -82,18 +163,18 @@ int cse536_receive(struct sk_buff* skb)
       skb->data_len);
   DEBUG("skb->end[%d]\n",
       skb->end);
-  DEBUG("skb->len-sizeof(struct iphdr)[%d]\n",
-      skb->len-sizeof(struct iphdr));
+  DEBUG("skb->len-sizeof(struct iphdr)[%zu]\n",
+      (size_t)(skb->len-sizeof(struct iphdr)));
   DEBUG("skb->len[%d]\n",
       skb->len);
   DEBUG("skb->tail[%d]\n",
       skb->tail);
   DEBUG("skb->mac_header[%d]\n",
       skb->mac_header);
-  DEBUG("skb->head[%p]\n",
-      (unsigned int)skb->head);
-  DEBUG("transport_data[%p]\n",
-      (unsigned int)transport_data);
+  DEBUG("skb->head[%zu]\n",
+      (size_t)skb->head);
+  DEBUG("transport_data[%zu]\n",
+      (size_t)transport_data);
   DEBUG("data: %s\n",
       transport_data);
 
@@ -108,8 +189,10 @@ int cse536_receive(struct sk_buff* skb)
   }
   printk("\n");
 
-  
+  //allocateBuffer(transport_data, 
+
   return 0;
+
 }
 
 
@@ -173,7 +256,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   //const char* SADDR_STRING = "192.168.2.8";
   __be32* daddr_ptr = NULL;
-  const char* data_buf = NULL;
+  const unsigned char* data_buff = NULL;
   __be32 daddr = 0;
   __be32 saddr = getSourceAddr();
 
@@ -186,14 +269,15 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   DEBUG("cse536_write: accepting %zd bytes\n", count);
   daddr_ptr = (__be32*)buf;
-  data_buf = (char*)(&daddr_ptr[1]);
+  data_buff = (unsigned char*)(&daddr_ptr[1]);
   daddr = *daddr_ptr;
   //saddr = in_aton(SADDR_STRING);
 
   DEBUG("source addr: 0x%04x\n", saddr);
   DEBUG("destination addr: 0x%04x\n", daddr);
+  DEBUG("data_buff:%s\n", data_buff);
 
-  sendPacketU32(count, data_buf, saddr, daddr);
+  sendPacketU32(count - sizeof(__be32) , data_buff, saddr, daddr);
   return count;
 }
 
@@ -288,7 +372,8 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
  *  @param daddr ip dest address
  */
 
-static void sendPacketU32(size_t data_size, const char* buffer,
+static void sendPacketU32(size_t data_size, 
+    const unsigned char* buffer,
     __be32 saddr, __be32 daddr)
 {
 
