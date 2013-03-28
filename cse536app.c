@@ -59,6 +59,7 @@ void processArgs(int argc, char** argv)
               data_to_send_size, 1);
           strncpy(data_to_send, optarg, data_to_send_size-1);
           printf("Found data: %s\n", data_to_send);
+          printf("Found data length: %zu\n", strlen(data_to_send));
         }
         break;
 
@@ -96,7 +97,7 @@ int writeOutput(uint32_t dest, char* data, int data_size)
       dest, data, data_size);
 
   size_t count = fwrite(&dest, 1, sizeof(dest), fd);
-  count += fwrite(data, 1, data_size, fd);
+  count += fwrite(data, 1, data_size-sizeof(dest), fd);
   if(count <= 0)
   {
     if(ferror(fd))
