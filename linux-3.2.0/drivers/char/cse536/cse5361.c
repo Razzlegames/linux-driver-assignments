@@ -28,11 +28,12 @@
 #include "cse5361.h"
 
 /// Attempt to use an unreserved IP protocol number
-#define IPPROTO_CSE536  253
+#define IPPROTO_CSE536  234
 #define CSE536_MAJOR 234
 
 #define ERROR(s, ...) \
   printk(KERN_ERR "%s:%d ERROR: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
+
 
 #define DEBUG(s, ...) \
   printk(KERN_DEBUG "%s:%d DEBUG: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -44,7 +45,11 @@ struct file_operations cse536_fops;
 
 unsigned char* rec_buffer = NULL;
 
-#define MAX_BUFFER_SIZE 257
+#define MAX_BUFFER_SIZE 256
+static inline void check_buffer_size_compile(void)
+{ 
+  BUILD_BUG_ON(sizeof(EventMessage) != MAX_BUFFER_SIZE);
+}
 
 /**
  *  Create a linked list to keep track of all buffers
@@ -80,12 +85,19 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
     size_t size);
 static struct receive_list* getOldestBufferNotRead(void);
 static void deleteBuffers(void);
+static void waitForACK(void);
 
 //static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
 
 DEFINE_SPINLOCK(rec_lock);
+DEFINE_SPINLOCK(create_ack_lock);
+DEFINE_SPINLOCK(counter_lock);
 struct semaphore receive_semaphore;
+struct semaphore ack_semaphore;
+
+/// Current counter value for this protocol
+unsigned int counter;
 
 //************************************************************************
 struct receive_list* allocateBuffer(unsigned char* buffer, 
@@ -115,32 +127,14 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
   return r;
 }
 
-////************************************************************************
-//static void clearOldBuffers(void)
-//{
-//
-//    struct receive_list* r =  receive_list_head;
-//    struct receive_list* to_clear =  NULL;
-//    while(r != last_read)
-//    {
-//      if(r == NULL)
-//      {
-//
-//        return;
-//      }
-//      to_clear = r;
-//      r = r->next;
-//      kfree(to_clear);
-//    }
-//}
-
 
 //************************************************************************
 static struct receive_list* getOldestBufferNotRead(void)
 {
   struct receive_list* h = NULL;
   struct receive_list* to_return = NULL;
-  int i = 0;
+
+  //int i = 0;
   //mutex_lock(&receive_list_mutex);
   //spin_lock_bh(&rec_lock);
   //down(&receive_semaphore);
@@ -399,6 +393,45 @@ static __be32 getSourceAddr(void)
 
 }
 
+//***************************************************************
+/**
+ *  Check to see what message type we're dealing with.
+ */
+
+MessageType getMessageType(const char* buff, size_t count)
+{
+
+  unsigned int message_type = 
+    *((unsigned int*)buff);
+
+  if(count < 4)
+  {
+    return UNKNOWN_MESSAGE;
+  }
+
+  switch(message_type)
+  {
+    case ACK_MESSAGE:
+      DEBUG("Found ACK message\n");
+      break;
+    case EVENT_MESSAGE:
+      DEBUG("Found EVENT message\n");
+      break;
+    default:
+      ERROR("Cannot find message type for packet!\n");
+      return UNKNOWN_MESSAGE;
+  }
+  return message_type;
+}
+
+//************************************************************************
+static void waitForACK()
+{
+
+  // Wait till TCP thread releases us on ACK
+  down(&ack_semaphore);
+}
+
 //************************************************************************
 static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
@@ -410,6 +443,10 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   __be32 daddr = 0;
   __be32 saddr = getSourceAddr();
   size_t count_to_send = 0;
+  unsigned char* temp_buf = NULL;
+
+  MessageType message_type = UNKNOWN_MESSAGE;
+  MessageAckRecord ack_record;
 
   if(buf == NULL)
   {
@@ -417,26 +454,50 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     ERROR("buffer to send was null!!\n");
     return 0;
   }
-  else if(*buf == IP_RECORD)
+  if(count > MAX_BUFFER_SIZE)
   {
-
-    DEBUG("cse536_write: accepting %zd bytes\n", count);
-    // Move past record type byte
-    daddr_ptr = (__be32*)&buf[1];
-    data_buff = (unsigned char*)(&daddr_ptr[1]);
-    daddr = *daddr_ptr;
-
-    DEBUG("source addr: 0x%04x\n", saddr);
-    DEBUG("destination addr: 0x%04x\n", daddr);
-    DEBUG("data_buff:%s\n", data_buff);
-
-    // Count to send = count received - ip size - recordtype size;
-    count_to_send = count - sizeof(__be32) - sizeof(uint8_t);
-
-    sendPacketU32(count_to_send , data_buff, saddr, daddr);
-    return count;
+    ERROR("Received a message size, %zu, "
+        "that is longer than the "
+        "max allowed by this protocol: %d\n",
+        count, MAX_BUFFER_SIZE);
+    return 0;
   }
-  return 0;
+
+  // Copy to temp buffer to work on
+  temp_buf = 
+    (unsigned char*)kmalloc(MAX_BUFFER_SIZE, GFP_ATOMIC);
+  memcpy(temp_buf, buf, count);
+
+  message_type = getMessageType(temp_buf, count);
+  DEBUG("cse536_write: accepting %zd bytes\n", count);
+
+  daddr_ptr = (__be32*)temp_buf;
+  // Move past destination address to get data buffer
+  data_buff = (unsigned char*)(&daddr_ptr[1]);
+  //  And store destination address
+  daddr = *daddr_ptr;
+
+  DEBUG("source addr: 0x%04x\n", saddr);
+  DEBUG("destination addr: 0x%04x\n", daddr);
+  DEBUG("data_buff:%s\n", data_buff);
+
+  // Count to send = count received - ip size - recordtype size;
+  count_to_send = count - sizeof(__be32);
+
+  spin_lock(&counter_lock);
+  ack_record.rec_address = daddr;
+  ack_record.counter = counter;
+  spin_unlock(&counter_lock);
+
+  sendPacketU32(count_to_send , data_buff, saddr, daddr);
+  if(message_type == EVENT_MESSAGE)
+  {
+    waitForACK();
+  }
+
+  kfree(temp_buf);
+  return count;
+
 }
 
 //************************************************************************
@@ -450,6 +511,7 @@ static long cse536_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static int __init cse536_init(void)
 {
 
+
   int ret;
   printk("cse536 module Init - debug mode is %s\n",
       debug_enable ? "enabled" : "disabled");
@@ -459,6 +521,7 @@ static int __init cse536_init(void)
     printk("Error registering cse536 device\n");
     return ret;
   }
+
 
   //	if (xfrm_register_type(&esp_type, AF_INET) < 0) {
   //		printk(KERN_INFO "ip esp init: can't add xfrm type\n");
@@ -474,6 +537,7 @@ static int __init cse536_init(void)
   }
 
   sema_init(&receive_semaphore, 1);
+  sema_init(&ack_semaphore, 1);
 
   printk("cse536: registered module successfully!\n");
   /* Init processing here... */
