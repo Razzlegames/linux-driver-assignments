@@ -64,7 +64,7 @@ static int list_length = 0;
 //    const char* SADDR_STRING,
 //    const char* DADDR_STRING);
 
-void processEventPacket(EventMessage* data);
+void processEventPacket(EventMessage* data, unsigned int len);
 static void sendPacketU32(size_t data_size, 
     unsigned const char* buffer,
     __be32 saddr, __be32 daddr);
@@ -151,24 +151,6 @@ static struct receive_list* getOldestBufferNotRead(void)
   //receive_list_head = h->next;
   to_return = receive_list_head;
   receive_list_head = receive_list_head->next;
-
-  //  // Find the link last read from
-  //  while(h->next != NULL && h != last_read)
-  //  {
-  //    h = h->next;
-  //    DEBUG("Looked in: list[%d]: %p, "
-  //        "for: %p\n", i, h, last_read);
-  //    i++;
-  //  }
-  //  if(h->next == NULL)
-  //  {
-  //    //spin_unlock_bh(&rec_lock);
-  //    to_return = NULL;
-  //    goto endgetOldestBufferNotRead;
-  //  }
-  //
-  //  to_return = h->next;
-  //  last_read = to_return;
 
   DEBUG("Returning found buffer: %p!\n", to_return);
 
@@ -274,6 +256,7 @@ void resetAckRecord(void)
  */
 int processAckPacket(AckMessage* data)
 {
+
   if(data == NULL)
   {
     ERROR("Ack message was null!\n");
@@ -301,9 +284,16 @@ int processAckPacket(AckMessage* data)
 /**
  *  Process event packet received
  */
-void processEventPacket(EventMessage* data)
+void processEventPacket(EventMessage* data, unsigned int len)
 {
 
+  if(data == NULL)
+  {
+    ERROR("Event message was null!\n");
+    return;
+  }
+
+  addBuffer(data->data, len);
 }
 
 //************************************************************************
@@ -323,6 +313,12 @@ int cse536_receive(struct sk_buff* skb)
   }
 
   transport_data = skb_transport_header(skb);
+  if(transport_data == NULL)
+  {
+    ERROR("Packet transport layer was NULL!\n");
+    return -1;
+  }
+
   DEBUG("Received an IP packet! skb->data_len[%d]\n",
       skb->data_len);
   DEBUG("skb->end[%d]\n",
@@ -349,7 +345,8 @@ int cse536_receive(struct sk_buff* skb)
   }
   else if(record_id == EVENT_MESSAGE)
   {
-    processEventPacket((EventMessage*)transport_data);
+    processEventPacket((EventMessage*)transport_data,
+        skb->len);
   }
   else
   {
@@ -357,7 +354,6 @@ int cse536_receive(struct sk_buff* skb)
         record_id);
     return -1;
   }
-  addBuffer(transport_data, skb->len);
 
   return 0;
 
@@ -503,7 +499,6 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
-  //const char* SADDR_STRING = "192.168.2.8";
   __be32* daddr_ptr = NULL;
   const unsigned char* data_buff = NULL;
   __be32 daddr = 0;
