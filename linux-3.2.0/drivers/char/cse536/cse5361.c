@@ -26,18 +26,6 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include "cse5361.h"
-
-/// Attempt to use an unreserved IP protocol number
-#define IPPROTO_CSE536  234
-#define CSE536_MAJOR 234
-
-#define ERROR(s, ...) \
-  printk(KERN_ERR "%s:%d ERROR: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
-
-
-#define DEBUG(s, ...) \
-  printk(KERN_DEBUG "%s:%d DEBUG: " s, __FILE__, __LINE__, ##__VA_ARGS__); \
-
 static int debug_enable = 0;
 module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
@@ -62,6 +50,9 @@ struct receive_list
   struct receive_list* next;
 };
 
+//-------------------------------------------------------
+//  Function prototypes
+//-------------------------------------------------------
 /// Make sure writes/reads are synced to this list
 static DEFINE_MUTEX(receive_list_mutex);
 /// The head of the linked list to receive data
@@ -73,6 +64,7 @@ static int list_length = 0;
 //    const char* SADDR_STRING,
 //    const char* DADDR_STRING);
 
+void processEventPacket(EventMessage* data);
 static void sendPacketU32(size_t data_size, 
     unsigned const char* buffer,
     __be32 saddr, __be32 daddr);
@@ -86,6 +78,8 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
 static struct receive_list* getOldestBufferNotRead(void);
 static void deleteBuffers(void);
 static void waitForACK(void);
+int processAckPacket(AckMessage* data);
+void resetAckRecord(void);
 
 //static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
@@ -98,6 +92,11 @@ struct semaphore ack_semaphore;
 
 /// Current counter value for this protocol
 unsigned int counter;
+
+/// Current ack we are waiting on
+AckMessage ack_record;
+
+const unsigned int MSECONDS_TO_WAIT = 5*1000;
 
 //************************************************************************
 struct receive_list* allocateBuffer(unsigned char* buffer, 
@@ -259,15 +258,63 @@ static const struct net_protocol cse536_protocol = {
 
 //************************************************************************
 /**
+ *  Reset ack record
+ */
+
+void resetAckRecord(void)
+{
+
+  ack_record.record_id = UNKNOWN_MESSAGE;
+  ack_record.counter = 0xFFFF;
+}
+
+//************************************************************************
+/**
+ *  Process event packet received
+ */
+int processAckPacket(AckMessage* data)
+{
+  if(data == NULL)
+  {
+    ERROR("Ack message was null!\n");
+    return -1;
+  }
+
+  spin_lock_bh(&create_ack_lock);
+  if(data->record_id == ACK_MESSAGE &&
+      data->counter == ack_record.counter)
+  {
+
+    resetAckRecord();
+    // Let the user process wake up since the ack was 
+    //   received
+    up(&ack_semaphore);
+
+  }
+  ack_record.counter = counter;
+  spin_unlock_bh(&create_ack_lock);
+  return 0;
+
+}
+
+//************************************************************************
+/**
+ *  Process event packet received
+ */
+void processEventPacket(EventMessage* data)
+{
+
+}
+
+//************************************************************************
+/**
  *  Receive packets on the new protocol
  */
 int cse536_receive(struct sk_buff* skb)
 {
 
   unsigned char* transport_data = NULL;
-  //unsigned char* cur = NULL;
-  //unsigned char* end = NULL;
-  //int i = 0;
+  uint32_t record_id = UNKNOWN_MESSAGE;
 
   if(skb == NULL)
   {
@@ -276,7 +323,7 @@ int cse536_receive(struct sk_buff* skb)
   }
 
   transport_data = skb_transport_header(skb);
-  DEBUG("Received a packet! skb->data_len[%d]\n",
+  DEBUG("Received an IP packet! skb->data_len[%d]\n",
       skb->data_len);
   DEBUG("skb->end[%d]\n",
       skb->end);
@@ -295,17 +342,21 @@ int cse536_receive(struct sk_buff* skb)
   DEBUG("data: %s\n",
       transport_data);
 
-  //  DEBUG("Packet in hex: ");
-  //  cur = transport_data;
-  //  end = transport_data + skb->len;
-  //  while(cur < end)
-  //  {
-  //
-  //    printk("%02x", *cur);
-  //    cur++;
-  //  }
-  //  printk("\n");
-
+  record_id = *(uint32_t*)(transport_data);
+  if(record_id == ACK_MESSAGE)
+  {
+    processAckPacket((AckMessage*)transport_data);
+  }
+  else if(record_id == EVENT_MESSAGE)
+  {
+    processEventPacket((EventMessage*)transport_data);
+  }
+  else
+  {
+    ERROR("Unknown record type received!: %d\n",
+        record_id);
+    return -1;
+  }
   addBuffer(transport_data, skb->len);
 
   return 0;
@@ -425,11 +476,26 @@ MessageType getMessageType(const char* buff, size_t count)
 }
 
 //************************************************************************
+/**
+ *   Wait for ACK packet from receiver or timeout
+ */
 static void waitForACK()
 {
 
+  long jiffies_timeout = msecs_to_jiffies(MSECONDS_TO_WAIT);
+
   // Wait till TCP thread releases us on ACK
-  down(&ack_semaphore);
+  //    (or timeout is exceeded)
+  int result = down_timeout(&ack_semaphore, jiffies_timeout);
+
+  if(result == -ETIME)
+  {
+    spin_lock_bh(&create_ack_lock);
+    DEBUG("Ack never received!!! For counter: %d\n",
+        ack_record.counter);
+    resetAckRecord();
+    spin_unlock_bh(&create_ack_lock);
+  }
 }
 
 //************************************************************************
@@ -446,7 +512,6 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   unsigned char* temp_buf = NULL;
 
   MessageType message_type = UNKNOWN_MESSAGE;
-  MessageAckRecord ack_record;
 
   if(buf == NULL)
   {
@@ -484,10 +549,10 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   // Count to send = count received - ip size - recordtype size;
   count_to_send = count - sizeof(__be32);
 
-  spin_lock(&counter_lock);
+  spin_lock_bh(&create_ack_lock);
   ack_record.rec_address = daddr;
   ack_record.counter = counter;
-  spin_unlock(&counter_lock);
+  spin_unlock_bh(&create_ack_lock);
 
   sendPacketU32(count_to_send , data_buff, saddr, daddr);
   if(message_type == EVENT_MESSAGE)
@@ -522,12 +587,6 @@ static int __init cse536_init(void)
     return ret;
   }
 
-
-  //	if (xfrm_register_type(&esp_type, AF_INET) < 0) {
-  //		printk(KERN_INFO "ip esp init: can't add xfrm type\n");
-  //		return -EAGAIN;
-  //	}
-
   ret = inet_add_protocol(&cse536_protocol, IPPROTO_CSE536);
   if(ret < 0)
   {
@@ -540,7 +599,7 @@ static int __init cse536_init(void)
   sema_init(&ack_semaphore, 1);
 
   printk("cse536: registered module successfully!\n");
-  /* Init processing here... */
+
   return 0;
 
 }
@@ -701,23 +760,7 @@ static void sendPacketU32(size_t data_size,
 static void cse536_err(struct sk_buff *skb, u32 info)
 {
 
-  struct net *net = dev_net(skb->dev);
-  const struct iphdr *iph = (const struct iphdr *)skb->data;
-  struct ip_esp_hdr *esph = 
-    (struct ip_esp_hdr *)(skb->data+(iph->ihl<<2));
-  struct xfrm_state *x;
-
-  if (icmp_hdr(skb)->type != ICMP_DEST_UNREACH ||
-      icmp_hdr(skb)->code != ICMP_FRAG_NEEDED)
-      return;
-
-  x = xfrm_state_lookup(net, skb->mark, (const xfrm_address_t *)&iph->daddr,
-      esph->spi, IPPROTO_ESP, AF_INET);
-  if (!x)
-      return;
-  NETDEBUG(KERN_DEBUG "pmtu discovery on SA ESP/%08x/%08x\n",
-      ntohl(esph->spi), ntohl(iph->daddr));
-  xfrm_state_put(x);
+  ERROR("Protocol error happened, code: %d\n", info);
 }
 
 //************************************************************************
