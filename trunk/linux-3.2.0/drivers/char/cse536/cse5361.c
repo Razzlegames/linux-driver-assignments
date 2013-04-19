@@ -84,10 +84,11 @@ void resetAckRecord(void);
 //static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
 
-DEFINE_SPINLOCK(rec_lock);
+DEFINE_SPINLOCK(receive_list_lock);
 DEFINE_SPINLOCK(create_ack_lock);
 DEFINE_SPINLOCK(counter_lock);
-struct semaphore receive_semaphore;
+struct semaphore read_semaphore;
+struct semaphore write_semaphore;
 struct semaphore ack_semaphore;
 
 /// Current counter value for this protocol
@@ -133,17 +134,14 @@ static struct receive_list* getOldestBufferNotRead(void)
   struct receive_list* h = NULL;
   struct receive_list* to_return = NULL;
 
-  //int i = 0;
-  //mutex_lock(&receive_list_mutex);
-  //spin_lock_bh(&rec_lock);
-  //down(&receive_semaphore);
+  spin_lock_bh(&receive_list_lock);
 
   h = receive_list_head;
   if(h == NULL)
   {
     //DEBUG("head of list was null!\n");
 
-    //spin_unlock_bh(&rec_lock);
+    //spin_unlock_bh(&receive_list_lock);
     to_return = NULL;
     goto endgetOldestBufferNotRead;
   }
@@ -155,9 +153,7 @@ static struct receive_list* getOldestBufferNotRead(void)
   DEBUG("Returning found buffer: %p!\n", to_return);
 
 endgetOldestBufferNotRead:
-  //up(&receive_semaphore);
-  //spin_unlock_bh(&rec_lock);
-  //mutex_unlock(&receive_list_mutex);
+  spin_unlock_bh(&receive_list_lock);
   return to_return;
 
 }
@@ -173,8 +169,7 @@ static void deleteBuffers(void)
   struct receive_list* h = NULL;
   int i = 0;
 
-  down(&receive_semaphore);
-  //spin_lock_bh(&rec_lock);
+  spin_lock_bh(&receive_list_lock);
 
   h = receive_list_head;
   DEBUG("Delete all buffers in module:\n");
@@ -188,8 +183,8 @@ static void deleteBuffers(void)
   }
   receive_list_head = NULL;
 
-  up(&receive_semaphore);
-  //spin_unlock_bh(&rec_lock);
+  up(&read_semaphore);
+  spin_unlock_bh(&receive_list_lock);
 }
 
 //************************************************************************
@@ -198,9 +193,7 @@ void addBuffer(unsigned char* buffer, size_t size)
 
   DEBUG("Adding packet[%zu]\n", size);
 
-  //spin_lock_bh(&rec_lock);
-  //mutex_lock(&receive_list_mutex);
-  down(&receive_semaphore);
+  spin_lock_bh(&receive_list_lock);
 
   if(receive_list_head == NULL)
   {
@@ -225,9 +218,7 @@ void addBuffer(unsigned char* buffer, size_t size)
   list_length++;
 
 endAddBuffer:
-  up(&receive_semaphore);
-  //spin_unlock_bh(&rec_lock);
-  //mutex_unlock(&receive_list_mutex);
+  spin_unlock_bh(&receive_list_lock);
   return;
 }
 //************************************************************************
@@ -263,6 +254,8 @@ int processAckPacket(AckMessage* data)
     return -1;
   }
 
+  // See if this ACK is the driod we're looking for
+  //   If so notify (up) the user process ACK was received
   spin_lock_bh(&create_ack_lock);
   if(data->record_id == ACK_MESSAGE &&
       data->counter == ack_record.counter)
@@ -382,8 +375,7 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   struct receive_list* read_entry = NULL;
   size_t read_amount = 0;
 
-  //spin_lock_bh(&rec_lock);
-  down(&receive_semaphore);
+  down(&read_semaphore);
 
   //DEBUG("entered read! count: %zu\n", count);
 
@@ -407,8 +399,7 @@ static ssize_t cse536_read(struct file *file, char *buf, size_t count,
   printk("cse536_read: returning %zu bytes\n", read_amount);
 
 endCse536Read:
-  up(&receive_semaphore);
-  //spin_unlock_bh(&rec_lock);
+  up(&read_semaphore);
   return read_amount;
 }
 
@@ -508,11 +499,14 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   MessageType message_type = UNKNOWN_MESSAGE;
 
+  down(&write_semaphore);
+
   if(buf == NULL)
   {
 
     ERROR("buffer to send was null!!\n");
-    return 0;
+    count = 0;
+    goto endCse536Write;
   }
   if(count > MAX_BUFFER_SIZE)
   {
@@ -520,7 +514,8 @@ static ssize_t cse536_write(struct file *file, const char *buf,
         "that is longer than the "
         "max allowed by this protocol: %d\n",
         count, MAX_BUFFER_SIZE);
-    return 0;
+    count = 0;
+    goto endCse536Write;
   }
 
   // Copy to temp buffer to work on
@@ -555,7 +550,10 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     waitForACK();
   }
 
+endCse536Write:
   kfree(temp_buf);
+
+  up(&write_semaphore);
   return count;
 
 }
@@ -590,7 +588,8 @@ static int __init cse536_init(void)
     return ret;
   }
 
-  sema_init(&receive_semaphore, 1);
+  sema_init(&read_semaphore, 1);
+  sema_init(&write_semaphore, 1);
   sema_init(&ack_semaphore, 1);
 
   printk("cse536: registered module successfully!\n");
