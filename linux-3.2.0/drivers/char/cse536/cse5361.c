@@ -31,12 +31,14 @@ module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "Enable module debug mode.");
 struct file_operations cse536_fops;
 
+#define MAX_SEND_RETRY 1
+
 unsigned char* rec_buffer = NULL;
 
 #define MAX_BUFFER_SIZE 256
 static inline void check_buffer_size_compile(void)
 { 
-  BUILD_BUG_ON(sizeof(EventMessage) != MAX_BUFFER_SIZE);
+  BUILD_BUG_ON(sizeof(Message) != MAX_BUFFER_SIZE);
 }
 
 /**
@@ -64,21 +66,21 @@ static int list_length = 0;
 //    const char* SADDR_STRING,
 //    const char* DADDR_STRING);
 
-void processEventPacket(EventMessage* data, unsigned int len);
+void processEventPacket(Message* data, unsigned int len);
 static void sendPacketU32(size_t data_size, 
-    unsigned const char* buffer,
+    const uint8_t* buffer,
     __be32 saddr, __be32 daddr);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
 int cse536_receive(struct sk_buff* skb);
 static __be32 getSourceAddr(void);
-void addBuffer(unsigned char* buffer, size_t size);
+void addBuffer(uint8_t* buffer, size_t size);
 struct receive_list* allocateBuffer(unsigned char* buffer, 
     size_t size);
 static struct receive_list* getOldestBufferNotRead(void);
 static void deleteBuffers(void);
 static void waitForACK(void);
-int processAckPacket(AckMessage* data);
+int processAckPacket(Message* data);
 void resetAckRecord(void);
 
 //static struct receive_list* last_read = NULL;
@@ -95,7 +97,7 @@ struct semaphore ack_semaphore;
 unsigned int counter;
 
 /// Current ack we are waiting on
-AckMessage ack_record;
+Message ack_record;
 
 const unsigned int MSECONDS_TO_WAIT = 5*1000;
 
@@ -188,7 +190,7 @@ static void deleteBuffers(void)
 }
 
 //************************************************************************
-void addBuffer(unsigned char* buffer, size_t size)
+void addBuffer(uint8_t* buffer, size_t size)
 {
 
   DEBUG("Adding packet[%zu]\n", size);
@@ -237,15 +239,16 @@ static const struct net_protocol cse536_protocol = {
 void resetAckRecord(void)
 {
 
-  ack_record.record_id = UNKNOWN_MESSAGE;
-  ack_record.counter = 0xFFFF;
+  memset(&ack_record, 0, sizeof(ack_record));
+  ack_record.header.record_id = UNKNOWN_MESSAGE;
+  ack_record.header.orig_clock = 0xFFFF;
 }
 
 //************************************************************************
 /**
  *  Process event packet received
  */
-int processAckPacket(AckMessage* data)
+int processAckPacket(Message* data)
 {
 
   if(data == NULL)
@@ -257,8 +260,8 @@ int processAckPacket(AckMessage* data)
   // See if this ACK is the driod we're looking for
   //   If so notify (up) the user process ACK was received
   spin_lock_bh(&create_ack_lock);
-  if(data->record_id == ACK_MESSAGE &&
-      data->counter == ack_record.counter)
+  if(data->header.record_id == ACK_MESSAGE &&
+      data->header.orig_clock == ack_record.header.orig_clock)
   {
 
     resetAckRecord();
@@ -267,7 +270,7 @@ int processAckPacket(AckMessage* data)
     up(&ack_semaphore);
 
   }
-  ack_record.counter = counter;
+  ack_record.header.orig_clock = counter;
   spin_unlock_bh(&create_ack_lock);
   return 0;
 
@@ -277,16 +280,51 @@ int processAckPacket(AckMessage* data)
 /**
  *  Process event packet received
  */
-void processEventPacket(EventMessage* data, unsigned int len)
+
+void processEventPacket(Message* message, unsigned int len)
 {
 
-  if(data == NULL)
+  Message* ack_to_send = NULL;
+  __be32 saddr = getSourceAddr();
+
+  if(message == NULL)
   {
     ERROR("Event message was null!\n");
     return;
   }
 
-  addBuffer(data->data, len);
+  if(sizeof(message) < len)
+  {
+    ERROR("SK buff len: %u sent was smaller than total "
+        "sizeof(Message): %zu ! Something strange "
+        "might happen!\n", len, sizeof(message));
+  }
+
+  ack_to_send = (Message*)kmalloc( sizeof(Message), GFP_ATOMIC);
+
+  if(message->header.orig_clock > counter)
+  {
+    DEBUG("Updating counter/clock: %d, to %d\n", 
+        counter, message->header.orig_clock);
+
+    spin_lock_bh(&counter_lock);
+    counter = message->header.orig_clock;
+    spin_unlock_bh(&counter_lock);
+  }
+
+  *ack_to_send = *message;
+  ack_to_send->header.dest_ip = message->header.source_ip;
+  ack_to_send->header.source_ip = saddr;
+
+  // Send Ack
+  sendPacketU32(sizeof(ack_to_send) , 
+      (uint8_t*)ack_to_send, 
+      ack_to_send->header.source_ip, 
+      ack_to_send->header.dest_ip);
+
+  addBuffer((uint8_t*)message, len);
+  kfree(ack_to_send);
+
 }
 
 //************************************************************************
@@ -298,6 +336,7 @@ int cse536_receive(struct sk_buff* skb)
 
   unsigned char* transport_data = NULL;
   uint32_t record_id = UNKNOWN_MESSAGE;
+  Message* message = NULL;
 
   if(skb == NULL)
   {
@@ -331,15 +370,16 @@ int cse536_receive(struct sk_buff* skb)
   DEBUG("data: %s\n",
       transport_data);
 
-  record_id = *(uint32_t*)(transport_data);
+  message = (Message*)transport_data;
+  record_id = message->header.record_id;
+
   if(record_id == ACK_MESSAGE)
   {
-    processAckPacket((AckMessage*)transport_data);
+    processAckPacket(message);
   }
   else if(record_id == EVENT_MESSAGE)
   {
-    processEventPacket((EventMessage*)transport_data,
-        skb->len);
+    processEventPacket(message, skb->len);
   }
   else
   {
@@ -439,8 +479,8 @@ static __be32 getSourceAddr(void)
 MessageType getMessageType(const char* buff, size_t count)
 {
 
-  unsigned int message_type = 
-    *((unsigned int*)buff);
+  Message* message = (Message*)buff;
+  uint32_t message_type = message->header.record_id;
 
   if(count < 4)
   {
@@ -470,18 +510,29 @@ static void waitForACK()
 {
 
   long jiffies_timeout = msecs_to_jiffies(MSECONDS_TO_WAIT);
+  int ack_received = 0;
+  int send_count = 0;
 
-  // Wait till TCP thread releases us on ACK
-  //    (or timeout is exceeded)
-  int result = down_timeout(&ack_semaphore, jiffies_timeout);
-
-  if(result == -ETIME)
+  while(!ack_received && send_count <= MAX_SEND_RETRY)
   {
-    spin_lock_bh(&create_ack_lock);
-    DEBUG("Ack never received!!! For counter: %d\n",
-        ack_record.counter);
-    resetAckRecord();
-    spin_unlock_bh(&create_ack_lock);
+
+    // Wait till TCP thread releases us on ACK
+    //    (or timeout is exceeded)
+    int result = down_timeout(&ack_semaphore, jiffies_timeout);
+
+    if(result == -ETIME)
+    {
+      spin_lock_bh(&create_ack_lock);
+      DEBUG("Ack never received!!! For counter: %d\n",
+          ack_record.header.orig_clock);
+      resetAckRecord();
+      spin_unlock_bh(&create_ack_lock);
+      send_count++;
+    }
+    else
+    {
+      ack_received = 1;
+    }
   }
 }
 
@@ -490,13 +541,15 @@ static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
-  __be32* daddr_ptr = NULL;
-  const unsigned char* data_buff = NULL;
-  __be32 daddr = 0;
   __be32 saddr = getSourceAddr();
-  size_t count_to_send = 0;
+
+  // Copy user mem to kernel mem for dev writen buffer
   unsigned char* temp_buf = NULL;
 
+  // Message container for convenience
+  Message* message = NULL;
+
+  // Detect issues with invalid messages
   MessageType message_type = UNKNOWN_MESSAGE;
 
   down(&write_semaphore);
@@ -524,31 +577,47 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   memcpy(temp_buf, buf, count);
 
   message_type = getMessageType(temp_buf, count);
+  if(message_type != EVENT_MESSAGE)
+  {
+    ERROR("Not writing event message from user app!\n");
+    goto endCse536Write;
+  }
+
   DEBUG("cse536_write: accepting %zd bytes\n", count);
 
-  daddr_ptr = (__be32*)temp_buf;
-  // Move past destination address to get data buffer
-  data_buff = (unsigned char*)(&daddr_ptr[1]);
-  //  And store destination address
-  daddr = *daddr_ptr;
+  message = (Message*)temp_buf;
 
-  DEBUG("source addr: 0x%04x\n", saddr);
-  DEBUG("destination addr: 0x%04x\n", daddr);
-  DEBUG("data_buff:%s\n", data_buff);
+  // Set the source ip here (don't have user app send this)
+  message->header.source_ip = saddr;
 
-  // Count to send = count received - ip size - recordtype size;
-  count_to_send = count - sizeof(__be32);
+  DEBUG("source addr: 0x%04x\n", message->header.source_ip);
+  DEBUG("destination addr: 0x%04x\n", message->header.dest_ip);
+  DEBUG("data_buff:%s\n", message->data);
+
+  // Reading counter
+  spin_lock_bh(&counter_lock);
 
   spin_lock_bh(&create_ack_lock);
-  ack_record.rec_address = daddr;
-  ack_record.counter = counter;
-  spin_unlock_bh(&create_ack_lock);
+  // Set the original clock in the message
+  message->header.orig_clock = counter;
+  ack_record = *message;
+  ack_record.header.record_id = ACK_MESSAGE;
 
-  sendPacketU32(count_to_send , data_buff, saddr, daddr);
-  if(message_type == EVENT_MESSAGE)
-  {
-    waitForACK();
-  }
+  spin_unlock_bh(&create_ack_lock);
+  spin_unlock_bh(&counter_lock);
+
+  DEBUG("clock:%d\n", message->header.orig_clock);
+
+  sendPacketU32(sizeof(Message) , message->data, 
+      message->header.source_ip, message->header.dest_ip);
+
+  // Update counter since packet sent
+  spin_lock_bh(&counter_lock);
+  counter++;
+  spin_unlock_bh(&counter_lock);
+
+  // It's a EVENT_MESSAGE so wait for ack or timeout
+  waitForACK();
 
 endCse536Write:
   kfree(temp_buf);
@@ -652,7 +721,7 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
  */
 
 static void sendPacketU32(size_t data_size, 
-    const unsigned char* buffer,
+    const uint8_t* buffer,
     __be32 saddr, __be32 daddr)
 {
 
@@ -661,7 +730,6 @@ static void sendPacketU32(size_t data_size,
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
   int err = 0;
-  //struct ethhdr* eth = NULL;
 
   DEBUG("Sending data: buffer[%zd] "
       "to: %04x, from: %04x\n", data_size, daddr,
@@ -679,6 +747,7 @@ static void sendPacketU32(size_t data_size,
   // Save off all the payload data
   DEBUG("Saving payload data\n");
   transport_data = skb_put(skb, data_size);
+
   //skb_reset_transport_header(skb);
   //transport_data = skb_transport_header(skb);
   //memcpy(transport_data, buffer, data_size);
