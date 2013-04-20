@@ -38,38 +38,34 @@ typedef enum
   EVENT_MESSAGE = 1,
 }MessageType;
 
-typedef struct AckMessage
+
+typedef struct MessageHeader
 {
 
   /// Record ID
   uint32_t record_id;
 
-  /// Address we will receive ack from
-  __be32 rec_address;
+  /// counter
+  uint32_t final_clock;
 
-  /// The counter value we had when we sent the event 
-  ///   Message (the ack will have this)
-  uint32_t counter;
-
-}AckMessage;
-
-
-typedef struct EventMessage
-{
-
-  /// Record ID
-  uint32_t record_id;
+  /// counter
+  uint32_t orig_clock;
 
   /// Source IP
   __be32 source_ip;
 
-  /// counter
-  uint32_t counter;
+  /// Dest IP
+  __be32 dest_ip;
 
+}MessageHeader;
+
+typedef struct Message
+{
+
+  MessageHeader header;
   /// data
-  uint8_t data[0xFF-sizeof(uint32_t)-sizeof(__be32) - 
-    sizeof(uint32_t)];
+  uint8_t data[0xFF-sizeof(MessageHeader)];
 
-}EventMessage;
+}Message;
 
 #endif /* CSE5361_H */

@@ -6,11 +6,12 @@ DEVICE= /dev/cse5361
 MY_PATH= linux-3.2.0/drivers/char/cse536/
 
 MY_LOCAL_SRC_FILES := \
-	$(wildcard $(MY_PATH)/*.c)
+	$(wildcard $(MY_PATH)/*.c) \
+	$(wildcard $(MY_PATH)/*.h)
 
-all: $(TARGET) mod
+all: tags $(TARGET) mod
 
-$(TARGET): $(TARGET).c tags
+$(TARGET): $(TARGET).c 
 	g++ -Wall -g -ggdb $< -o $(TARGET)
 
 
