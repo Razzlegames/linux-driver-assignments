@@ -94,7 +94,7 @@ struct semaphore write_semaphore;
 struct semaphore ack_semaphore;
 
 /// Current counter value for this protocol
-unsigned int counter;
+uint32_t counter = 0xFFFFFF;
 
 /// Current ack we are waiting on
 Message ack_record;
@@ -302,15 +302,15 @@ void processEventPacket(Message* message, unsigned int len)
 
   ack_to_send = (Message*)kmalloc( sizeof(Message), GFP_ATOMIC);
 
+  spin_lock_bh(&counter_lock);
   if(message->header.orig_clock > counter)
   {
     DEBUG("Updating counter/clock: %d, to %d\n", 
         counter, message->header.orig_clock);
 
-    spin_lock_bh(&counter_lock);
     counter = message->header.orig_clock;
-    spin_unlock_bh(&counter_lock);
   }
+  spin_unlock_bh(&counter_lock);
 
   *ack_to_send = *message;
   ack_to_send->header.dest_ip = message->header.source_ip;
@@ -351,24 +351,22 @@ int cse536_receive(struct sk_buff* skb)
     return -1;
   }
 
-  DEBUG("Received an IP packet! skb->data_len[%d]\n",
-      skb->data_len);
-  DEBUG("skb->end[%d]\n",
-      skb->end);
+  DEBUG("Received an IP packet! skb->data_len[%zu]\n",
+      (size_t)skb->data_len);
+  DEBUG("skb->end[%zu]\n",
+      (size_t)skb->end);
   DEBUG("skb->len-sizeof(struct iphdr)[%zu]\n",
       (size_t)(skb->len-sizeof(struct iphdr)));
-  DEBUG("skb->len[%d]\n",
-      skb->len);
-  DEBUG("skb->tail[%d]\n",
-      skb->tail);
-  DEBUG("skb->mac_header[%d]\n",
-      skb->mac_header);
+  DEBUG("skb->len[%zu]\n",
+      (size_t)skb->len);
+  DEBUG("skb->tail[%zu]\n",
+      (size_t)skb->tail);
+  DEBUG("skb->mac_header[%zu]\n",
+      (size_t)skb->mac_header);
   DEBUG("skb->head[%zu]\n",
       (size_t)skb->head);
   DEBUG("transport_data[%zu]\n",
       (size_t)transport_data);
-  DEBUG("data: %s\n",
-      transport_data);
 
   message = (Message*)transport_data;
   record_id = message->header.record_id;
@@ -637,7 +635,6 @@ static long cse536_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 //************************************************************************
 static int __init cse536_init(void)
 {
-
 
   int ret;
   printk("cse536 module Init - debug mode is %s\n",
