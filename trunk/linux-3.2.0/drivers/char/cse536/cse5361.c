@@ -70,6 +70,7 @@ void processEventPacket(Message* data, unsigned int len);
 static void sendPacketU32(size_t data_size, 
     const uint8_t* buffer,
     __be32 saddr, __be32 daddr);
+static void sendPacketAndWaitForAck(Message* message);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
 int cse536_receive(struct sk_buff* skb);
@@ -79,7 +80,7 @@ struct receive_list* allocateBuffer(unsigned char* buffer,
     size_t size);
 static struct receive_list* getOldestBufferNotRead(void);
 static void deleteBuffers(void);
-static void waitForACK(void);
+static int waitForACK(void);
 int processAckPacket(Message* data);
 void resetAckRecord(void);
 
@@ -504,34 +505,31 @@ MessageType getMessageType(const char* buff, size_t count)
 /**
  *   Wait for ACK packet from receiver or timeout
  */
-static void waitForACK()
+
+static int waitForACK(void)
 {
 
   long jiffies_timeout = msecs_to_jiffies(MSECONDS_TO_WAIT);
+
   int ack_received = 0;
-  int send_count = 0;
 
-  while(!ack_received && send_count <= MAX_SEND_RETRY)
+  // Wait till TCP thread releases us on ACK
+  //    (or timeout is exceeded)
+  int result = down_timeout(&ack_semaphore, jiffies_timeout);
+
+  spin_lock_bh(&create_ack_lock);
+  if(result == -ETIME)
   {
-
-    // Wait till TCP thread releases us on ACK
-    //    (or timeout is exceeded)
-    int result = down_timeout(&ack_semaphore, jiffies_timeout);
-
-    if(result == -ETIME)
-    {
-      spin_lock_bh(&create_ack_lock);
-      DEBUG("Ack never received!!! For counter: %d\n",
-          ack_record.header.orig_clock);
-      resetAckRecord();
-      spin_unlock_bh(&create_ack_lock);
-      send_count++;
-    }
-    else
-    {
-      ack_received = 1;
-    }
+    DEBUG("Ack never received!!! For counter: %d\n",
+        ack_record.header.orig_clock);
   }
+  else
+  {
+    ack_received = 1;
+  }
+  spin_unlock_bh(&create_ack_lock);
+
+  return ack_received;
 }
 
 //************************************************************************
@@ -585,7 +583,8 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   message = (Message*)temp_buf;
 
-  // Set the source ip here (don't have user app send this)
+  // Set the source ip here 
+  //    (don't have user app send this. Will crash if wrong)
   message->header.source_ip = saddr;
 
   DEBUG("source addr: 0x%04x\n", message->header.source_ip);
@@ -606,16 +605,8 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   DEBUG("clock:%d\n", message->header.orig_clock);
 
-  sendPacketU32(sizeof(Message) , message->data, 
-      message->header.source_ip, message->header.dest_ip);
-
-  // Update counter since packet sent
-  spin_lock_bh(&counter_lock);
-  counter++;
-  spin_unlock_bh(&counter_lock);
-
-  // It's a EVENT_MESSAGE so wait for ack or timeout
-  waitForACK();
+  // Send and wait for response
+  sendPacketAndWaitForAck(message);
 
 endCse536Write:
   kfree(temp_buf);
@@ -704,6 +695,43 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
   //      eth->h_dest[3],
   //      eth->h_dest[4],
   //      eth->h_dest[5]);
+
+}
+
+//************************************************************************
+/**
+ *  Send packet and wait for ACK
+ */
+
+static void sendPacketAndWaitForAck(Message* message)
+{
+
+  int ack_received = 0;
+  int send_count = 0;
+
+  // Resend for MAX_SEND_RETRY if ack not received
+  while(!ack_received && send_count <= MAX_SEND_RETRY)
+  {
+
+    sendPacketU32(sizeof(Message) , message->data, 
+        message->header.source_ip, message->header.dest_ip);
+
+    // It's a EVENT_MESSAGE so wait for ack or timeout
+    ack_received = waitForACK();
+    send_count++;
+  }
+
+  // Increment counter since packet sent
+  spin_lock_bh(&counter_lock);
+  counter++;
+  spin_unlock_bh(&counter_lock);
+
+  // Reset ack record since we're no longer waiting on ACK
+  //   (it either timedout or was received at this point)
+  spin_lock_bh(&create_ack_lock);
+  resetAckRecord();
+  spin_unlock_bh(&create_ack_lock);
+
 
 }
 
