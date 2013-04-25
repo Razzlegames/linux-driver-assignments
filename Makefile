@@ -2,6 +2,7 @@
 
 TARGET=cse536app
 DEVICE= /dev/cse5361
+LIBS = -pthread
 
 MY_PATH= linux-3.2.0/drivers/char/cse536/
 
@@ -12,7 +13,7 @@ MY_LOCAL_SRC_FILES := \
 all: tags $(TARGET) mod
 
 $(TARGET): $(TARGET).c 
-	g++ -Wall -g -ggdb $< -o $(TARGET)
+	g++ -Wall -g -ggdb $(LIBS) $< -o $(TARGET)
 
 
 clean:
@@ -37,4 +38,4 @@ kernel_tags:
 	ctags -f kernel_tags -Rn ./
 
 tags: $(MY_LOCAL_SRC_FILES)
-	ctags -Rn $(MY_PATH) ./*.c
+	ctags -Rn $(MY_PATH) ./*.{c,h}

@@ -14,6 +14,8 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <pthread.h>
+#include <sys/time.h>
 
 #include "linux-3.2.0/drivers/char/cse536/cse5361.h"
 
@@ -30,6 +32,9 @@ char dest_ip_str[MAX_IP_STR];
 char* data_to_send = NULL;
 int data_to_send_size = 0;
 
+pthread_t read_thread;
+pthread_t write_thread;
+
 // File handle to write to
 FILE *fd = NULL;
 const int IP_ADDRESS_SIZE = sizeof(uint32_t);
@@ -42,6 +47,7 @@ void int_handler(int sig)
 {
   printf("Trying to quit...\n");
   printf("Closing any open file handles..\n");
+  fflush(stdout);
   if(fd && fclose(fd) != 0)
   {
 
@@ -125,7 +131,8 @@ int writeOutput(uint32_t dest, char* data, int data_size)
   printf("Writing to dest: %04x, data: %s, size: %d\n",
       dest, data, data_size);
 
-  unsigned char* buffer = (unsigned char*)malloc(data_size+sizeof(uint8_t));
+  unsigned char* buffer = 
+    (unsigned char*)malloc(data_size+sizeof(uint8_t));
 
   size_t count = 0;
 
@@ -193,34 +200,115 @@ void waitForPackets()
 }
 
 //***************************************************************
+/**
+ *  Randomize last octet
+ */
+
+void randomizeLastOctet(uint8_t* ip_ptr)
+{
+
+  int lower_octet = 0;
+  lower_octet = rand() % 40 + 3;
+  ip_ptr[3] = lower_octet;
+
+}
+
+//***************************************************************
+/**
+ *  Write mode
+ */
+void doWriteMode(void* arg)
+{
+
+  // Message to send
+  Message message;
+
+  // This part is just for testing 
+  //   (need random IP for last octet in production)
+  struct in_addr addr = {0};
+  int result = 
+    inet_aton("192.168.2.9", &addr);
+  message.header.dest_ip = *(uint32_t*)&addr;
+
+  if(result == 0)
+  {
+
+    printf("Error converting to binary ip!\n");
+  }
+
+  // Just something stupid to send
+  const char* greeting = "Hi packet";
+  int i = 0;
+
+  char str_addr[INET_ADDRSTRLEN] = "";
+
+  // Write till we are quit by Ctrl-C
+  while(1)
+  {
+
+    randomizeLastOctet((uint8_t*)&message.header.dest_ip);
+    inet_ntop(AF_INET, &message.header.dest_ip, 
+        str_addr, INET_ADDRSTRLEN);
+    snprintf((char*)message.data, sizeof(message.data), 
+        "%s: %d\n", greeting, i);
+
+    printf("Written message was:[%s]: %s\n", 
+        str_addr,
+        (char*)message.data);
+    printf("data size: %zu\n", sizeof(message.data));
+    printf("Write mode!\n");
+    fflush(stdout);
+    sleep(1);
+    i++;
+  }
+
+}
+
+//***************************************************************
+/**
+ *  Read mode
+ */
+void* doReadMode(void* arg)
+{
+
+  Message message;
+  strncpy((char*)message.data, 
+      "Read the message!", sizeof(message.data));
+
+  // Read till we are quit by Ctrl-C
+  while(1)
+  {
+    printf("Read mode!\n");
+    printf("Read message was: %s\n",(char*)message.data);
+    fflush(stdout);
+    sleep(1);
+  }
+  return NULL;
+}
+
+//***************************************************************
 int main(int argc, char** argv)
 {
 
+  timeval seed_time;
+  gettimeofday(&seed_time, NULL);
+  srand(seed_time.tv_usec);
+
   signal(SIGINT, int_handler);
-  processArgs(argc, argv);
+  //processArgs(argc, argv);
 
   fd = openDev("rb+");
 
-  uint32_t daddr = 0;
 
-  if(!receiver_mode)
-  {
-    if(strlen(dest_ip_str) <= 0)
-    {
-      printf("no destination IP set. Use -d IP_ADDRESS_STRING. "
-          "Example ./cse536app -d 192.168.2.1\n");
-      exit(1);
-    }
+  pthread_create(&read_thread, NULL, &doReadMode, NULL);
 
-    inet_pton(AF_INET, dest_ip_str, &daddr);
-    writeOutput(daddr,data_to_send, data_to_send_size);
-    fflush(fd);
-    fclose(fd);
-  }
-  else
-  {
-    waitForPackets();
-  }
+  // write mode
+  doWriteMode(NULL);
+  //    inet_pton(AF_INET, dest_ip_str, &daddr);
+  //    writeOutput(daddr,data_to_send, data_to_send_size);
+
+  fflush(fd);
+  fclose(fd);
 
   return EXIT_SUCCESS;
 }

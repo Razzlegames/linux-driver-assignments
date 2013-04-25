@@ -262,7 +262,8 @@ int processAckPacket(Message* data)
   //   If so notify (up) the user process ACK was received
   spin_lock_bh(&create_ack_lock);
   if(data->header.record_id == ACK_MESSAGE &&
-      data->header.orig_clock == ack_record.header.orig_clock)
+      data->header.orig_clock == ack_record.header.orig_clock &&
+      data->header.source_ip == ack_record.header.dest_ip)
   {
 
     resetAckRecord();
@@ -594,6 +595,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   // Reading counter
   spin_lock_bh(&counter_lock);
 
+  // Create ack message, we're looking for
   spin_lock_bh(&create_ack_lock);
   // Set the original clock in the message
   message->header.orig_clock = counter;
@@ -727,7 +729,7 @@ static void sendPacketAndWaitForAck(Message* message)
   spin_unlock_bh(&counter_lock);
 
   // Reset ack record since we're no longer waiting on ACK
-  //   (it either timedout or was received at this point)
+  //   (it either timed out or was received at this point)
   spin_lock_bh(&create_ack_lock);
   resetAckRecord();
   spin_unlock_bh(&create_ack_lock);
