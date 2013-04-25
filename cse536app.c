@@ -201,7 +201,8 @@ void waitForPackets()
 
 //***************************************************************
 /**
- *  Randomize last octet
+ *  Randomize last octet of IP Address so we can 
+ *    send to all folks in class
  */
 
 void randomizeLastOctet(uint8_t* ip_ptr)
@@ -298,7 +299,6 @@ int main(int argc, char** argv)
   //processArgs(argc, argv);
 
   fd = openDev("rb+");
-
 
   pthread_create(&read_thread, NULL, &doReadMode, NULL);
 
