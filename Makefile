@@ -8,18 +8,20 @@ MY_PATH= linux-3.2.0/drivers/char/cse536/
 
 MY_LOCAL_SRC_FILES := \
 	$(wildcard $(MY_PATH)/*.c) \
-	$(wildcard $(MY_PATH)/*.h)
+	$(wildcard $(MY_PATH)/*.h) \
+	$(wildcard ./*.c) \
+	$(wildcard ./*.h) \
 
 all: tags $(TARGET) mod
 
 $(TARGET): $(TARGET).c 
 	g++ -Wall -g -ggdb $(LIBS) $< -o $(TARGET)
 
-
 clean:
 	rm $(TARGET)
 
-run: $(TARGET) tags
+run: tags $(TARGET) 
+	echo $(MY_LOCAL_SRC_FILES)
 	./$(TARGET)
 
 mod:
@@ -38,4 +40,4 @@ kernel_tags:
 	ctags -f kernel_tags -Rn ./
 
 tags: $(MY_LOCAL_SRC_FILES)
-	ctags -Rn $(MY_PATH) ./*.{c,h}
+	ctags -Rn $(MY_PATH) ./*.c
