@@ -83,6 +83,7 @@ static void deleteBuffers(void);
 static int waitForACK(void);
 int processAckPacket(Message* data);
 void resetAckRecord(void);
+void printMessage(const Message* message);
 
 //static struct receive_list* last_read = NULL;
 //static void clearOldBuffers(void);
@@ -289,6 +290,8 @@ void processEventPacket(Message* message, unsigned int len)
   Message* ack_to_send = NULL;
   __be32 saddr = getSourceAddr();
 
+  DEBUG("Process EVENT packet!\n");
+
   if(message == NULL)
   {
     ERROR("Event message was null!\n");
@@ -302,7 +305,7 @@ void processEventPacket(Message* message, unsigned int len)
         "might happen!\n", len, sizeof(message));
   }
 
-  ack_to_send = (Message*)kmalloc( sizeof(Message), GFP_ATOMIC);
+  ack_to_send = (Message*)kmalloc( sizeof(*ack_to_send), GFP_ATOMIC);
 
   spin_lock_bh(&counter_lock);
   if(message->header.orig_clock > counter)
@@ -319,7 +322,7 @@ void processEventPacket(Message* message, unsigned int len)
   ack_to_send->header.source_ip = saddr;
 
   // Send Ack
-  sendPacketU32(sizeof(ack_to_send) , 
+  sendPacketU32(sizeof(*ack_to_send) , 
       (uint8_t*)ack_to_send, 
       ack_to_send->header.source_ip, 
       ack_to_send->header.dest_ip);
@@ -476,12 +479,18 @@ static __be32 getSourceAddr(void)
  *  Check to see what message type we're dealing with.
  */
 
-MessageType getMessageType(const char* buff, size_t count)
+MessageType getMessageType(Message* message, size_t count)
 {
 
-  Message* message = (Message*)buff;
-  uint32_t message_type = message->header.record_id;
+  uint32_t message_type = 0;
 
+  if(message == NULL)
+  {
+     ERROR("message was NULL!\n");
+     return UNKNOWN_MESSAGE;
+  }
+
+  message_type = message->header.record_id;
   if(count < 4)
   {
     return UNKNOWN_MESSAGE;
@@ -490,13 +499,19 @@ MessageType getMessageType(const char* buff, size_t count)
   switch(message_type)
   {
     case ACK_MESSAGE:
+      DEBUG("------------------------------------\n");
       DEBUG("Found ACK message\n");
+      DEBUG("------------------------------------\n");
       break;
     case EVENT_MESSAGE:
+      DEBUG("------------------------------------\n");
       DEBUG("Found EVENT message\n");
+      DEBUG("------------------------------------\n");
       break;
     default:
-      ERROR("Cannot find message type for packet!\n");
+      DEBUG("------------------------------------\n");
+      ERROR("!!!!! Cannot find message type for packet!\n");
+      DEBUG("------------------------------------\n");
       return UNKNOWN_MESSAGE;
   }
   return message_type;
@@ -534,21 +549,45 @@ static int waitForACK(void)
 }
 
 //************************************************************************
+void printMessage(const Message* message)
+{
+
+
+  /// Record ID
+  DEBUG(" record_id: %u\n", message->header.record_id);
+
+  /// counter
+  DEBUG(" final_clock: %u\n", message->header.final_clock);
+
+  /// counter
+  DEBUG(" orig_clock: %u\n", message->header.orig_clock);
+
+  /// Source IP
+  DEBUG("__be32 source_ip: %u\n", message->header.source_ip);
+
+  /// Dest IP
+  DEBUG(" dest_ip: %u\n", message->header.dest_ip);
+
+
+  DEBUG(" data: %s\n", message->data);
+
+}
+
+//************************************************************************
 static ssize_t cse536_write(struct file *file, const char *buf,
     size_t count, loff_t * ppos)
 {
 
   __be32 saddr = getSourceAddr();
 
-  // Copy user mem to kernel mem for dev writen buffer
-  unsigned char* temp_buf = NULL;
-
   // Message container for convenience
+  //   (allocated in Kernel mem)
   Message* message = NULL;
 
   // Detect issues with invalid messages
   MessageType message_type = UNKNOWN_MESSAGE;
 
+  // LOCK writing in dev to one user at a time
   down(&write_semaphore);
 
   if(buf == NULL)
@@ -564,16 +603,24 @@ static ssize_t cse536_write(struct file *file, const char *buf,
         "that is longer than the "
         "max allowed by this protocol: %d\n",
         count, MAX_BUFFER_SIZE);
+    printMessage((Message*)buf);
     count = 0;
     goto endCse536Write;
   }
 
   // Copy to temp buffer to work on
-  temp_buf = 
-    (unsigned char*)kmalloc(MAX_BUFFER_SIZE, GFP_ATOMIC);
-  memcpy(temp_buf, buf, count);
+  message = 
+    (Message*)kmalloc(sizeof(*message), GFP_ATOMIC);
 
-  message_type = getMessageType(temp_buf, count);
+  if(message == NULL)
+  {
+    ERROR("Could not malloc space for message!\n");
+    goto endCse536Write;
+  }
+
+  memcpy(message, buf, count);
+
+  message_type = getMessageType(message, count);
   if(message_type != EVENT_MESSAGE)
   {
     ERROR("Not writing event message from user app!\n");
@@ -581,8 +628,6 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   }
 
   DEBUG("cse536_write: accepting %zd bytes\n", count);
-
-  message = (Message*)temp_buf;
 
   // Set the source ip here 
   //    (don't have user app send this. Will crash if wrong)
@@ -611,7 +656,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   sendPacketAndWaitForAck(message);
 
 endCse536Write:
-  kfree(temp_buf);
+  kfree(message);
 
   up(&write_semaphore);
   return count;
