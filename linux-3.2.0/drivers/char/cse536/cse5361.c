@@ -272,6 +272,11 @@ int processAckPacket(Message* data)
       data->header.source_ip == ack_record.header.dest_ip)
   {
 
+    DEBUG("------------------------------------\n");
+    DEBUG("Ack was matched!!\n");
+    DEBUG("------------------------------------\n");
+    printMessage(data);
+
     resetAckRecord();
     // Let the user process wake up since the ack was 
     //   received
@@ -346,8 +351,10 @@ void processEventPacket(Message* message, unsigned int len)
   spin_lock_bh(&counter_lock);
   if(message->header.orig_clock > counter)
   {
+    DEBUG("------------------------------------\n");
     DEBUG("Updating counter/clock: %d, to %d\n", 
         counter, message->header.orig_clock);
+    DEBUG("------------------------------------\n");
 
     counter = message->header.orig_clock;
   }
@@ -714,6 +721,8 @@ static int __init cse536_init(void)
 {
 
   int ret;
+  counter = 0;
+
   printk("cse536 module Init - debug mode is %s\n",
       debug_enable ? "enabled" : "disabled");
   ret = register_chrdev(CSE536_MAJOR, "cse5361", &cse536_fops);
