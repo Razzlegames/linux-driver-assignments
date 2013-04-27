@@ -235,7 +235,7 @@ void doWriteMode(void* arg)
 
   // Just something stupid to send
   const char* greeting = "Hi packet";
-  int i = 0;
+  int i = rand() % 50;
 
   char str_addr[INET_ADDRSTRLEN] = "";
 
