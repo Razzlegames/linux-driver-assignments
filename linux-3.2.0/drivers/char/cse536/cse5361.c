@@ -434,7 +434,6 @@ int cse536_receive(struct sk_buff* skb)
 
 }
 
-
 //************************************************************************
 static int cse536_open(struct inode *inode, struct file *file)
 {

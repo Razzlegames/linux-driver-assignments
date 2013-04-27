@@ -45,8 +45,18 @@ const int IP_ADDRESS_SIZE = sizeof(uint32_t);
  */
 void int_handler(int sig)
 {
+
   printf("Trying to quit...\n");
   printf("Closing any open file handles..\n");
+  if(sig == SIGINT)
+  {
+    printf("SIGINT RECEIVED\n");
+  }
+  else if(sig == SIGHUP)
+  {
+
+    printf("SIGHUP RECEIVED\n");
+  }
   fflush(stdout);
   if(fd && fclose(fd) != 0)
   {
@@ -296,11 +306,23 @@ void* doReadMode(void* arg)
 int main(int argc, char** argv)
 {
 
+  sighandler_t sighand;
+  sighand = signal(SIGINT, int_handler);
+  if(sighand == SIG_ERR)
+  {
+    printf("ERROR setting up signal handler: SIGINT\n");
+  }
+
+  sighand = signal(SIGHUP, int_handler);
+  if(sighand == SIG_ERR)
+  {
+    printf("ERROR setting up signal handler: SIGHUP\n");
+  }
+
   timeval seed_time;
   gettimeofday(&seed_time, NULL);
   srand(seed_time.tv_usec);
 
-  signal(SIGINT, int_handler);
   //processArgs(argc, argv);
 
   fd = openDev("rb+");
