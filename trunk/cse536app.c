@@ -276,12 +276,16 @@ void* doReadMode(void* arg)
   Message message;
   strncpy((char*)message.data, 
       "Read the message!", sizeof(message.data));
-
+  int count = 0;
   // Read till we are quit by Ctrl-C
   while(1)
   {
     printf("Read mode!\n");
-    printf("Read message was: %s\n",(char*)message.data);
+    count = fread(&message, sizeof(message), 1, fd);
+    if(count > 0)
+    {
+      printf("Read message was: %s\n",(char*)message.data);
+    }
     fflush(stdout);
     sleep(1);
   }
@@ -301,7 +305,7 @@ int main(int argc, char** argv)
 
   fd = openDev("rb+");
 
-  //pthread_create(&read_thread, NULL, &doReadMode, NULL);
+  pthread_create(&read_thread, NULL, &doReadMode, NULL);
 
   // write mode
   doWriteMode(NULL);
