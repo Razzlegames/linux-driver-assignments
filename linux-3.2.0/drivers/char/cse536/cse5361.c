@@ -315,9 +315,9 @@ void processEventPacket(Message* message, unsigned int len)
     return;
   }
 
-  if(sizeof(message) < len)
+  if(sizeof(*message) < len)
   {
-    ERROR("SK buff len: %u sent was smaller than total "
+    ERROR("SK buff len: %u sent was larger than total "
         "sizeof(Message): %zu ! Something strange "
         "might happen!\n", len, sizeof(message));
   }
@@ -796,7 +796,7 @@ static void sendPacketAndWaitForAck(Message* message)
   while(!ack_received && send_count <= MAX_SEND_RETRY)
   {
 
-    sendPacketU32(sizeof(*message) , message,
+    sendPacketU32(sizeof(*message) , (const uint8_t*)message,
         message->header.source_ip, message->header.dest_ip);
 
     // It's a EVENT_MESSAGE so wait for ack or timeout
@@ -855,16 +855,18 @@ static void sendPacketU32(size_t data_size,
   // Save off all the payload data
   DEBUG("Saving payload data\n");
   transport_data = skb_put(skb, data_size);
+  memcpy(transport_data, buffer, data_size);
 
   //skb_reset_transport_header(skb);
   //transport_data = skb_transport_header(skb);
   //memcpy(transport_data, buffer, data_size);
-  skb->csum = csum_and_copy_from_user(buffer, 
-      transport_data, data_size, 0, &err);
-  if(err)
-  {
-    ERROR("Could not load payload data!\n");
-  }
+  //  skb->csum = csum_and_copy_from_user(buffer, 
+  //      transport_data, data_size, 0, &err);
+  //  if(err)
+  //  {
+  //    ERROR("Could not load payload data!\n");
+  //  }
+  
   DEBUG("Done saving payload data\n");
 
   // Create space in sk_buff for iphdr
