@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #define SERVER_PORT 23456 
 #define MAX_LINE 256
+#include "cse5361.h"
 
 int main (int argc, char * argv[])
 {
@@ -21,7 +22,9 @@ int main (int argc, char * argv[])
    int s, ret;
    int length=0;
 
-   hp = gethostbyname("192.168.2.104");  // replace this ip with your host name or ip
+   hp = gethostbyname("192.168.2.8");  // replace this ip with your host name or ip
+
+
    if (!hp)			
    {
 		fprintf(stderr,"simplex-talk:Unknown host: %s\n",(char*)hp);
@@ -47,17 +50,38 @@ int main (int argc, char * argv[])
    }
 
    length = sizeof(client);
+   printf("-------------------------------------------\n");
+   printf("     Starting UDP Test Server\n");
+   printf("-------------------------------------------\n");
+   fflush(stdout);
+
    while(1)
    {
-	      ret = recvfrom(s, buf, MAX_LINE, 0, (struct sockaddr *)&client, &length);
+        ret = recvfrom(s, buf, MAX_LINE, 0, 
+            (struct sockaddr *)&client, (socklen_t*)&length);
+
 
 		if( ret < 0 )
 		{
 			fprintf( stderr, "Send Error %d\n", ret );
 			exit(1);
 		}
-		buf[ret] = 0;
-		printf( "Working!!!> %s", buf);
+
+    
+    Message* message = (Message*)buf;
+    
+   printf("-------------------------------------------\n");
+   if(message->header.record_id == 0)
+   {
+     printf("Message was a COMPLETE EVENT\n");
+   }
+   else
+   {
+
+     printf("Message NO ACK RECEIVED!!!!\n");
+   }
+   printf("-------------------------------------------\n");
+		printf( "Working!!!> %s", message->data);
    }
    return 0;
 }

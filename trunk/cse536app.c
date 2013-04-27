@@ -17,8 +17,8 @@
 #include <pthread.h>
 #include <sys/time.h>
 
-#include "linux-3.2.0/drivers/char/cse536/cse5361.h"
-
+#include "udpclient.h"
+#include "cse5361.h"
 
 
 #define MAX_IP_STR 13
@@ -38,6 +38,32 @@ pthread_t write_thread;
 // File handle to write to
 FILE *fd = NULL;
 const int IP_ADDRESS_SIZE = sizeof(uint32_t);
+
+//************************************************************************
+void printMessage(const Message* message)
+{
+
+
+  /// Record ID
+  printf(" record_id: %u\n", message->header.record_id);
+
+  /// counter
+  printf(" final_clock: %u\n", message->header.final_clock);
+
+  /// counter
+  printf(" orig_clock: %u\n", message->header.orig_clock);
+
+  /// Source IP
+  printf("__be32 source_ip: %u\n", message->header.source_ip);
+
+  /// Dest IP
+  printf(" dest_ip: %u\n", message->header.dest_ip);
+
+
+  printf(" data: %s\n", message->data);
+
+}
+
 
 //***************************************************************
 /**
@@ -294,8 +320,11 @@ void* doReadMode(void* arg)
     if(count > 0)
     {
       printf("-------------------------------------------\n");
-      printf("Read message was: %s\n",(char*)message.data);
+      printf("Read message[%d] was: %s\n",
+          count, message.data);
+      printMessage(&message);
       printf("-------------------------------------------\n");
+      sendToServer(&message);
     }
     fflush(stdout);
   }

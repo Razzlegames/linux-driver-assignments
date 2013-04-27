@@ -70,7 +70,7 @@ void processEventPacket(Message* data, unsigned int len);
 static void sendPacketU32(size_t data_size, 
     const uint8_t* buffer,
     __be32 saddr, __be32 daddr);
-static void sendPacketAndWaitForAck(Message* message);
+static void sendPacketAndWaitForAck(const Message* const message);
 
 static void cse536_err(struct sk_buff *skb, u32 info);
 int cse536_receive(struct sk_buff* skb);
@@ -578,6 +578,7 @@ static int waitForACK(void)
   {
     DEBUG("Ack never received!!! For counter: %d\n",
         ack_record.header.orig_clock);
+
   }
   else
   {
@@ -690,6 +691,11 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   // Set the original clock in the message
   message->header.orig_clock = counter;
   ack_record = *message;
+
+  if(memcmp(message, &ack_record, sizeof(ack_record)) !=0)
+  {
+    ERROR("MESSAGE DOESN'T EQUAL ACK record!!!\n");
+  }
   ack_record.header.record_id = ACK_MESSAGE;
 
   spin_unlock_bh(&create_ack_lock);
@@ -797,11 +803,16 @@ void getMacAddresses(__be32 saddr,__be32 daddr,
  *  Send packet and wait for ACK
  */
 
-static void sendPacketAndWaitForAck(Message* message)
+static void sendPacketAndWaitForAck(const Message* const message)
 {
 
   int ack_received = 0;
   int send_count = 0;
+
+  // Don't change the function callers
+  //   Make a new one since changing record type
+  //   on success to ACK
+  Message* temp_msg =  NULL;
 
   if(message == NULL)
   {
@@ -819,6 +830,33 @@ static void sendPacketAndWaitForAck(Message* message)
     // It's a EVENT_MESSAGE so wait for ack or timeout
     ack_received = waitForACK();
     send_count++;
+  }
+
+  if(!ack_received)
+  {
+    DEBUG("------------------------------------\n");
+    DEBUG(" Ack never received!!!\n");
+    DEBUG("------------------------------------\n");
+
+    addBuffer((uint8_t*)message, sizeof(*message));
+
+  }
+  else
+  {
+
+    DEBUG("------------------------------------\n");
+    DEBUG(" Ack was received: MESSAGE COMPLETE\n");
+    DEBUG("------------------------------------\n");
+    //printMessage(&ack_record);
+
+    // Don't change the function callers
+    //   Make a new one since changing record type
+    temp_msg = 
+      (Message*)kmalloc(sizeof(*temp_msg), GFP_ATOMIC);
+    *temp_msg = *message;
+    temp_msg->header.record_id = ACK_MESSAGE;
+    addBuffer((uint8_t*)temp_msg, sizeof(*temp_msg));
+    kfree(temp_msg);
   }
 
   // Increment counter since packet sent
