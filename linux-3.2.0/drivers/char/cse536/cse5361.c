@@ -640,6 +640,7 @@ static ssize_t cse536_write(struct file *file, const char *buf,
   // Copy to temp buffer to work on
   message = 
     (Message*)kmalloc(sizeof(*message), GFP_ATOMIC);
+  memset(message, 0, sizeof(*message));
 
   if(message == NULL)
   {
@@ -785,11 +786,17 @@ static void sendPacketAndWaitForAck(Message* message)
   int ack_received = 0;
   int send_count = 0;
 
+  if(message == NULL)
+  {
+    ERROR("message was NULL!\n");
+    return;
+  }
+
   // Resend for MAX_SEND_RETRY if ack not received
   while(!ack_received && send_count <= MAX_SEND_RETRY)
   {
 
-    sendPacketU32(sizeof(Message) , message->data, 
+    sendPacketU32(sizeof(*message) , message,
         message->header.source_ip, message->header.dest_ip);
 
     // It's a EVENT_MESSAGE so wait for ack or timeout
