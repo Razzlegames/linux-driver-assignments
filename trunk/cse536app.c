@@ -280,14 +280,14 @@ void* doReadMode(void* arg)
   // Read till we are quit by Ctrl-C
   while(1)
   {
-    printf("Read mode!\n");
     count = fread(&message, sizeof(message), 1, fd);
     if(count > 0)
     {
+      printf("-------------------------------------------\n");
       printf("Read message was: %s\n",(char*)message.data);
+      printf("-------------------------------------------\n");
     }
     fflush(stdout);
-    sleep(1);
   }
   return NULL;
 }
