@@ -295,6 +295,25 @@ int processAckPacket(Message* data)
 }
 
 //************************************************************************
+void sendAck(Message* ack_to_send, Message* event_message)
+{
+
+  __be32 saddr = getSourceAddr();
+
+  *ack_to_send = *event_message;
+  ack_to_send->header.record_id = ACK_MESSAGE;
+  ack_to_send->header.dest_ip = event_message->header.source_ip;
+  ack_to_send->header.source_ip = saddr;
+
+  // Send Ack
+  sendPacketU32(sizeof(*ack_to_send) , 
+      (uint8_t*)ack_to_send, 
+      ack_to_send->header.source_ip, 
+      ack_to_send->header.dest_ip);
+
+}
+
+//************************************************************************
 /**
  *  Process event packet received
  */
@@ -303,7 +322,6 @@ void processEventPacket(Message* message, unsigned int len)
 {
 
   Message* ack_to_send = NULL;
-  __be32 saddr = getSourceAddr();
 
   DEBUG("------------------------------------\n");
   DEBUG("Process EVENT packet!\n");
@@ -323,6 +341,7 @@ void processEventPacket(Message* message, unsigned int len)
   }
 
   ack_to_send = (Message*)kmalloc( sizeof(*ack_to_send), GFP_ATOMIC);
+  sendAck(ack_to_send, message);
 
   spin_lock_bh(&counter_lock);
   if(message->header.orig_clock > counter)
@@ -333,16 +352,6 @@ void processEventPacket(Message* message, unsigned int len)
     counter = message->header.orig_clock;
   }
   spin_unlock_bh(&counter_lock);
-
-  *ack_to_send = *message;
-  ack_to_send->header.dest_ip = message->header.source_ip;
-  ack_to_send->header.source_ip = saddr;
-
-  // Send Ack
-  sendPacketU32(sizeof(*ack_to_send) , 
-      (uint8_t*)ack_to_send, 
-      ack_to_send->header.source_ip, 
-      ack_to_send->header.dest_ip);
 
   addBuffer((uint8_t*)message, len);
   kfree(ack_to_send);
@@ -509,8 +518,8 @@ MessageType getMessageType(Message* message, size_t count)
 
   if(message == NULL)
   {
-     ERROR("message was NULL!\n");
-     return UNKNOWN_MESSAGE;
+    ERROR("message was NULL!\n");
+    return UNKNOWN_MESSAGE;
   }
 
   message_type = message->header.record_id;
@@ -837,7 +846,6 @@ static void sendPacketU32(size_t data_size,
   struct sk_buff* skb = alloc_skb(LENGTH, GFP_ATOMIC);
   struct iphdr* ip_header = NULL;
   unsigned char* transport_data = NULL;
-  int err = 0;
 
   DEBUG("Sending data: buffer[%zd] "
       "to: %04x, from: %04x\n", data_size, daddr,
@@ -866,7 +874,7 @@ static void sendPacketU32(size_t data_size,
   //  {
   //    ERROR("Could not load payload data!\n");
   //  }
-  
+
   DEBUG("Done saving payload data\n");
 
   // Create space in sk_buff for iphdr
