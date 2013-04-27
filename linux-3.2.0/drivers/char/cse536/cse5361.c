@@ -253,6 +253,11 @@ void resetAckRecord(void)
 int processAckPacket(Message* data)
 {
 
+  DEBUG("------------------------------------\n");
+  DEBUG("Process ACK packet!\n");
+  DEBUG("------------------------------------\n");
+
+
   if(data == NULL)
   {
     ERROR("Ack message was null!\n");
@@ -273,6 +278,16 @@ int processAckPacket(Message* data)
     up(&ack_semaphore);
 
   }
+  else
+  {
+    DEBUG("------------------------------------\n");
+    ERROR("Ack received doesn't match ack waiting for...");
+    DEBUG("------------------------------------\n");
+    DEBUG("Ack waiting: \n");
+    printMessage(&ack_record);
+    DEBUG("Ack received: \n");
+    printMessage(data);
+  }
   ack_record.header.orig_clock = counter;
   spin_unlock_bh(&create_ack_lock);
   return 0;
@@ -290,7 +305,9 @@ void processEventPacket(Message* message, unsigned int len)
   Message* ack_to_send = NULL;
   __be32 saddr = getSourceAddr();
 
+  DEBUG("------------------------------------\n");
   DEBUG("Process EVENT packet!\n");
+  DEBUG("------------------------------------\n");
 
   if(message == NULL)
   {
@@ -343,6 +360,10 @@ int cse536_receive(struct sk_buff* skb)
   uint32_t record_id = UNKNOWN_MESSAGE;
   Message* message = NULL;
 
+  DEBUG("------------------------------------\n");
+  DEBUG("ENTERED Received packet\n");
+  DEBUG("------------------------------------\n");
+
   if(skb == NULL)
   {
     ERROR("packet received was NULL!\n");
@@ -375,6 +396,8 @@ int cse536_receive(struct sk_buff* skb)
 
   message = (Message*)transport_data;
   record_id = message->header.record_id;
+  DEBUG("Message received: %s\n", message->data);
+  printMessage(message);
 
   if(record_id == ACK_MESSAGE)
   {
@@ -502,11 +525,13 @@ MessageType getMessageType(Message* message, size_t count)
       DEBUG("------------------------------------\n");
       DEBUG("Found ACK message\n");
       DEBUG("------------------------------------\n");
+      printMessage(message);
       break;
     case EVENT_MESSAGE:
       DEBUG("------------------------------------\n");
       DEBUG("Found EVENT message\n");
       DEBUG("------------------------------------\n");
+      printMessage(message);
       break;
     default:
       DEBUG("------------------------------------\n");
@@ -589,6 +614,10 @@ static ssize_t cse536_write(struct file *file, const char *buf,
 
   // LOCK writing in dev to one user at a time
   down(&write_semaphore);
+
+  DEBUG("------------------------------------\n");
+  DEBUG("ENTERED char driver Write\n");
+  DEBUG("------------------------------------\n");
 
   if(buf == NULL)
   {
