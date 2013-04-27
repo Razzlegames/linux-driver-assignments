@@ -126,29 +126,15 @@ FILE* openDev(const char* mode)
  *  Write output
  */
 
-int writeOutput(uint32_t dest, char* data, int data_size)
+int writeOutput(Message* message)
 {
-  printf("Writing to dest: %04x, data: %s, size: %d\n",
-      dest, data, data_size);
 
-  unsigned char* buffer = 
-    (unsigned char*)malloc(data_size+sizeof(uint8_t));
+  printf("Writing to dest: %04x, data: %s, size: %zu\n",
+      message->header.dest_ip, message->data, 
+      sizeof(*message));
 
-  size_t count = 0;
-
-  // Write the record type
-  buffer[0] = (uint8_t)IP_RECORD;
-  count += sizeof(uint8_t);
-
-  // write dest ip
-  memcpy(&buffer[count], &dest, sizeof(dest)); 
-  count += sizeof(dest);
-
-  // write dest ip
-  memcpy(&buffer[count], data, data_size-sizeof(dest)); 
-  count += (data_size-sizeof(dest));
-
-  size_t written = fwrite(buffer, 1, count, fd);
+  size_t written = fwrite(message, 1, sizeof(*message), fd);
+  fflush(fd);
   if(written <= 0)
   {
     if(ferror(fd))
@@ -159,7 +145,7 @@ int writeOutput(uint32_t dest, char* data, int data_size)
     }
 
   }
-  printf("writen: %zd\n", written);
+  printf("written: %zd\n", written);
   return written;
 }
 
@@ -221,8 +207,17 @@ void randomizeLastOctet(uint8_t* ip_ptr)
 void doWriteMode(void* arg)
 {
 
+  printf("Entered write mode!\n");
+
   // Message to send
   Message message;
+  memset(&message, 0, sizeof(message));
+
+  printf("Prep to send message of size: %zu\n",
+      sizeof(message));
+  fflush(stdout);
+
+  message.header.record_id = EVENT_MESSAGE;
 
   // This part is just for testing 
   //   (need random IP for last octet in production)
@@ -235,6 +230,7 @@ void doWriteMode(void* arg)
   {
 
     printf("Error converting to binary ip!\n");
+    exit(1);
   }
 
   // Just something stupid to send
@@ -247,7 +243,9 @@ void doWriteMode(void* arg)
   while(1)
   {
 
-    randomizeLastOctet((uint8_t*)&message.header.dest_ip);
+    // Use only for the final testing phase in class
+    //randomizeLastOctet((uint8_t*)&message.header.dest_ip);
+
     inet_ntop(AF_INET, &message.header.dest_ip, 
         str_addr, INET_ADDRSTRLEN);
     snprintf((char*)message.data, sizeof(message.data), 
@@ -258,6 +256,9 @@ void doWriteMode(void* arg)
         (char*)message.data);
     printf("data size: %zu\n", sizeof(message.data));
     printf("Write mode!\n");
+    printf("Transport packet size: %zu\n", sizeof(message));
+
+    writeOutput(&message);
     fflush(stdout);
     sleep(1);
     i++;
@@ -300,7 +301,7 @@ int main(int argc, char** argv)
 
   fd = openDev("rb+");
 
-  pthread_create(&read_thread, NULL, &doReadMode, NULL);
+  //pthread_create(&read_thread, NULL, &doReadMode, NULL);
 
   // write mode
   doWriteMode(NULL);
