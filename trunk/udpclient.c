@@ -12,6 +12,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define SERVER_PORT 23456 
 #define MAX_PENDING 5
@@ -23,52 +24,56 @@
 int sendToServer(const Message* const message)
 {
   //struct sockaddr_in client;
-   struct sockaddr_in server;
-   struct hostent *hp;
-   int ret;
-   int s;
+  struct sockaddr_in server;
+  struct hostent *hp;
+  int ret;
+  int s;
 
-   bzero((char *)&server, sizeof(server));
-   server.sin_family = AF_INET;
-   server.sin_addr.s_addr = INADDR_ANY;
-   server.sin_port = htons(0);
+  bzero((char *)&server, sizeof(server));
+  server.sin_family = AF_INET;
+  server.sin_addr.s_addr = INADDR_ANY;
+  server.sin_port = htons(0);
 
-   s = socket(AF_INET, SOCK_DGRAM, 0);
-   if (s < 0)
-   {
-		perror("simplex-talk: UDP_socket error");
+  s = socket(AF_INET, SOCK_DGRAM, 0);
+  if (s < 0)
+  {
+    perror("simplex-talk: UDP_socket error");
     fflush(stdout);
-		exit(1);
-   }
+    exit(1);
+  }
 
-   if ((bind(s, (struct sockaddr *)&server, sizeof(server))) < 0)
-   {
-		perror("simplex-talk: UDP_bind error");
+  if ((bind(s, (struct sockaddr *)&server, sizeof(server))) < 0)
+  {
+    perror("simplex-talk: UDP_bind error");
     fflush(stdout);
-		exit(1);
-   }
+    close(s);
+    exit(1);
+  }
 
-   hp = gethostbyname( "192.168.2.8" );
-   if( !hp )
-   {
-      	fprintf(stderr, "Unknown host %s\n", "localhost");
-        fflush(stdout);
-      	exit(1);
-   }
+  hp = gethostbyname( "192.168.2.8" );
+  if( !hp )
+  {
+    fprintf(stderr, "Unknown host %s\n", "localhost");
+    fflush(stdout);
+    close(s);
+    exit(1);
+  }
 
-   bzero( (char *)&server, sizeof(server));
-   server.sin_family = AF_INET;
-   bcopy( hp->h_addr, (char *)&server.sin_addr, hp->h_length );
-   server.sin_port = htons(SERVER_PORT); 
+  bzero( (char *)&server, sizeof(server));
+  server.sin_family = AF_INET;
+  bcopy( hp->h_addr, (char *)&server.sin_addr, hp->h_length );
+  server.sin_port = htons(SERVER_PORT); 
 
-   ret = sendto(s, message, sizeof(*message), 0,
-       (struct sockaddr *)&server, sizeof(server));
-   if( ret != sizeof(*message))
-   {
-     fprintf( stderr, "Datagram Send error %d\n", ret );
-     printf("ERROR: %s\n", strerror(errno));
-     fflush(stdout);
-     exit(1);
-   }
-   return 0;
+  ret = sendto(s, message, sizeof(*message), 0,
+      (struct sockaddr *)&server, sizeof(server));
+  if( ret != sizeof(*message))
+  {
+    fprintf( stderr, "Datagram Send error %d\n", ret );
+    printf("ERROR: %s\n", strerror(errno));
+    fflush(stdout);
+    close(s);
+    exit(1);
+  }
+  close(s);
+  return 0;
 }

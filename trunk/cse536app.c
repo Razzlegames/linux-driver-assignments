@@ -42,6 +42,7 @@ const int IP_ADDRESS_SIZE = sizeof(uint32_t);
 void printMessage(const Message* message)
 {
 
+  char str_addr[INET_ADDRSTRLEN] = "";
 
   /// Record ID
   printf(" record_id: %u\n", message->header.record_id);
@@ -52,11 +53,19 @@ void printMessage(const Message* message)
   /// counter
   printf(" orig_clock: %u\n", message->header.orig_clock);
 
+  inet_ntop(AF_INET, &message->header.source_ip, 
+      str_addr, INET_ADDRSTRLEN);
+
   /// Source IP
-  printf("__be32 source_ip: %u\n", message->header.source_ip);
+  printf("__be32 source_ip: %u:%s\n", message->header.source_ip,
+      str_addr);
+
+  inet_ntop(AF_INET, &message->header.dest_ip, 
+      str_addr, INET_ADDRSTRLEN);
 
   /// Dest IP
-  printf(" dest_ip: %u\n", message->header.dest_ip);
+  printf(" dest_ip: %u: %s\n", message->header.dest_ip,
+      str_addr);
 
 
   printf(" data: %s\n", message->data);
@@ -124,7 +133,7 @@ void processArgs(int argc, char** argv)
         if(optarg != NULL)
         {
           data_to_send_size = strlen(optarg) +
-              IP_ADDRESS_SIZE+1;
+            IP_ADDRESS_SIZE+1;
           data_to_send = (char*)calloc(
               data_to_send_size, 1);
           strncpy(data_to_send, optarg, data_to_send_size-1);
@@ -295,7 +304,7 @@ void doWriteMode(void* arg)
 
     writeOutput(&message);
     fflush(stdout);
-    sleep(1);
+    //sleep(1);
     i++;
   }
 
