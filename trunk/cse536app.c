@@ -21,7 +21,6 @@
 #include "cse5361.h"
 
 
-#define MAX_IP_STR 13
 
 enum {
   FALSE = 0, TRUE =1};
