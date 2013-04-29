@@ -747,7 +747,7 @@ static int __init cse536_init(void)
 
   sema_init(&read_semaphore, 1);
   sema_init(&write_semaphore, 1);
-  sema_init(&ack_semaphore, 1);
+  sema_init(&ack_semaphore, 0);
 
   printk("cse536: registered module successfully!\n");
 
