@@ -843,7 +843,6 @@ static void sendPacketAndWaitForAck(const Message* const message)
     DEBUG(" Ack never received!!!\n");
     DEBUG("------------------------------------\n");
 
-    //addBuffer((uint8_t*)message, sizeof(*message));
 
   }
   else
@@ -854,14 +853,6 @@ static void sendPacketAndWaitForAck(const Message* const message)
     DEBUG("------------------------------------\n");
     //printMessage(&ack_record);
 
-    //    // Don't change the function callers
-    //    //   Make a new one since changing record type
-    //    temp_msg = 
-    //      (Message*)kmalloc(sizeof(*temp_msg), GFP_ATOMIC);
-    //    *temp_msg = *message;
-    //    temp_msg->header.record_id = ACK_MESSAGE;
-    //    addBuffer((uint8_t*)temp_msg, sizeof(*temp_msg));
-    //    kfree(temp_msg);
   }
 
   // Increment counter since packet sent
