@@ -177,8 +177,10 @@ int writeOutput(Message* message)
       message->header.dest_ip, message->data, 
       sizeof(*message));
 
-  size_t written = fwrite(message, 1, sizeof(*message), fd);
-  fflush(fd);
+  //size_t written = fwrite(message, 1, sizeof(*message), fd);
+  int fd_int = fileno(fd);
+  size_t written = write(fd_int, message, sizeof(*message));
+  //fflush(fd);
   if(written <= 0)
   {
     if(ferror(fd))
