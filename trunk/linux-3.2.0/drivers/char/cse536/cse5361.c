@@ -346,7 +346,6 @@ void processEventPacket(Message* message, unsigned int len)
   }
 
   ack_to_send = (Message*)kmalloc( sizeof(*ack_to_send), GFP_ATOMIC);
-  sendAck(ack_to_send, message);
 
   spin_lock_bh(&counter_lock);
   if(message->header.orig_clock > counter)
@@ -359,6 +358,10 @@ void processEventPacket(Message* message, unsigned int len)
     counter = message->header.orig_clock;
   }
   spin_unlock_bh(&counter_lock);
+
+  // Let the receiver know our clock has changed
+  ack_to_send->header.final_clock = counter;
+  sendAck(ack_to_send, message);
 
   addBuffer((uint8_t*)message, len);
   kfree(ack_to_send);
