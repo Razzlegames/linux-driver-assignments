@@ -250,7 +250,7 @@ void resetAckRecord(void)
 /**
  *  Process event packet received
  */
-int processAckPacket(Message* data)
+int processAckPacket(Message* message)
 {
 
   DEBUG("------------------------------------\n");
@@ -258,7 +258,7 @@ int processAckPacket(Message* data)
   DEBUG("------------------------------------\n");
 
 
-  if(data == NULL)
+  if(message == NULL)
   {
     ERROR("Ack message was null!\n");
     return -1;
@@ -267,16 +267,17 @@ int processAckPacket(Message* data)
   // See if this ACK is the driod we're looking for
   //   If so notify (up) the user process ACK was received
   spin_lock_bh(&create_ack_lock);
-  if(data->header.record_id == ACK_MESSAGE &&
-      data->header.orig_clock == ack_record.header.orig_clock &&
-      data->header.source_ip == ack_record.header.dest_ip)
+  if(message->header.record_id == ACK_MESSAGE &&
+      message->header.orig_clock == ack_record.header.orig_clock &&
+      message->header.source_ip == ack_record.header.dest_ip)
   {
 
     DEBUG("------------------------------------\n");
     DEBUG("Ack was matched!!\n");
     DEBUG("------------------------------------\n");
-    printMessage(data);
+    printMessage(message);
 
+    addBuffer((uint8_t*)message, sizeof(*message));
     resetAckRecord();
     // Let the user process wake up since the ack was 
     //   received
@@ -291,7 +292,7 @@ int processAckPacket(Message* data)
     DEBUG("Ack waiting: \n");
     printMessage(&ack_record);
     DEBUG("Ack received: \n");
-    printMessage(data);
+    printMessage(message);
   }
   ack_record.header.orig_clock = counter;
   spin_unlock_bh(&create_ack_lock);
@@ -842,7 +843,7 @@ static void sendPacketAndWaitForAck(const Message* const message)
     DEBUG(" Ack never received!!!\n");
     DEBUG("------------------------------------\n");
 
-    addBuffer((uint8_t*)message, sizeof(*message));
+    //addBuffer((uint8_t*)message, sizeof(*message));
 
   }
   else
@@ -853,14 +854,14 @@ static void sendPacketAndWaitForAck(const Message* const message)
     DEBUG("------------------------------------\n");
     //printMessage(&ack_record);
 
-    // Don't change the function callers
-    //   Make a new one since changing record type
-    temp_msg = 
-      (Message*)kmalloc(sizeof(*temp_msg), GFP_ATOMIC);
-    *temp_msg = *message;
-    temp_msg->header.record_id = ACK_MESSAGE;
-    addBuffer((uint8_t*)temp_msg, sizeof(*temp_msg));
-    kfree(temp_msg);
+    //    // Don't change the function callers
+    //    //   Make a new one since changing record type
+    //    temp_msg = 
+    //      (Message*)kmalloc(sizeof(*temp_msg), GFP_ATOMIC);
+    //    *temp_msg = *message;
+    //    temp_msg->header.record_id = ACK_MESSAGE;
+    //    addBuffer((uint8_t*)temp_msg, sizeof(*temp_msg));
+    //    kfree(temp_msg);
   }
 
   // Increment counter since packet sent
