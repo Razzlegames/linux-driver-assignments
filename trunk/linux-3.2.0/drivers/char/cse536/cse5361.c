@@ -310,6 +310,9 @@ void sendAck(Message* ack_to_send, Message* event_message)
   ack_to_send->header.dest_ip = event_message->header.source_ip;
   ack_to_send->header.source_ip = saddr;
 
+  // Let the receiver know our clock has changed
+  ack_to_send->header.final_clock = counter;
+
   // Send Ack
   sendPacketU32(sizeof(*ack_to_send) , 
       (uint8_t*)ack_to_send, 
@@ -359,8 +362,6 @@ void processEventPacket(Message* message, unsigned int len)
   }
   spin_unlock_bh(&counter_lock);
 
-  // Let the receiver know our clock has changed
-  ack_to_send->header.final_clock = counter;
   sendAck(ack_to_send, message);
 
   addBuffer((uint8_t*)message, len);
