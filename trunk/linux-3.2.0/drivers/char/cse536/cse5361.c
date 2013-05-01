@@ -861,13 +861,6 @@ static void sendPacketAndWaitForAck(const Message* const message)
   counter++;
   spin_unlock_bh(&counter_lock);
 
-  // Reset ack record since we're no longer waiting on ACK
-  //   (it either timed out or was received at this point)
-  spin_lock_bh(&create_ack_lock);
-  resetAckRecord();
-  spin_unlock_bh(&create_ack_lock);
-
-
 }
 
 //************************************************************************
