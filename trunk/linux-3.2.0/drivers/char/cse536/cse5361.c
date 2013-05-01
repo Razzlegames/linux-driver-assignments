@@ -269,7 +269,7 @@ int processAckPacket(Message* message)
   spin_lock_bh(&create_ack_lock);
   if(message->header.record_id == ACK_MESSAGE &&
       message->header.orig_clock == ack_record.header.orig_clock &&
-      message->header.source_ip == ack_record.header.dest_ip)
+      message->header.dest_ip == ack_record.header.dest_ip)
   {
 
     DEBUG("------------------------------------\n");
@@ -304,12 +304,12 @@ int processAckPacket(Message* message)
 void sendAck(Message* ack_to_send, Message* event_message)
 {
 
-  __be32 saddr = getSourceAddr();
+  //__be32 saddr = getSourceAddr();
 
   *ack_to_send = *event_message;
   ack_to_send->header.record_id = ACK_MESSAGE;
-  ack_to_send->header.dest_ip = event_message->header.source_ip;
-  ack_to_send->header.source_ip = saddr;
+  //ack_to_send->header.dest_ip = event_message->header.source_ip;
+  //ack_to_send->header.source_ip = saddr;
 
   // Let the receiver know our clock has changed
   ack_to_send->header.final_clock = counter;
@@ -817,7 +817,7 @@ static void sendPacketAndWaitForAck(const Message* const message)
   // Don't change the function callers
   //   Make a new one since changing record type
   //   on success to ACK
-  Message* temp_msg =  NULL;
+  //Message* temp_msg =  NULL;
 
   if(message == NULL)
   {

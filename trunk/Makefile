@@ -52,7 +52,8 @@ mod:
 
 install: $(TARGET) mod tags
 	-sudo mknod $(DEVICE) c 234 0
-	sudo chown kyle.kyle $(DEVICE)
+	-sudo chown kyle.kyle $(DEVICE)
+	-sudo chown kyle2.kyle2 $(DEVICE)
 	sudo chmod o=+rw,g=+rw $(DEVICE)
 	-sudo rmmod cse5361
 	make -C linux-3.2.0/ M=drivers/char/cse536 modules
