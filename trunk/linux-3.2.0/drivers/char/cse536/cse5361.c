@@ -304,7 +304,7 @@ int processAckPacket(Message* message)
 void sendAck(Message* ack_to_send, Message* event_message)
 {
 
-  //__be32 saddr = getSourceAddr();
+  __be32 saddr = getSourceAddr();
 
   *ack_to_send = *event_message;
   ack_to_send->header.record_id = ACK_MESSAGE;
@@ -317,8 +317,9 @@ void sendAck(Message* ack_to_send, Message* event_message)
   // Send Ack
   sendPacketU32(sizeof(*ack_to_send) , 
       (uint8_t*)ack_to_send, 
-      ack_to_send->header.source_ip, 
-      ack_to_send->header.dest_ip);
+      // Reversed dest and source (sending back)
+      saddr,
+      ack_to_send->header.source_ip);
 
 }
 
